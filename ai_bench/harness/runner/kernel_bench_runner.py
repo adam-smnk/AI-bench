@@ -217,6 +217,8 @@ class KernelBenchRunner:
 
                     # Statistics - memory bandwidth.
                     bytes = ai_hc.get_bytes(variant)
+                    if not bytes and self.is_torch_backend():
+                        bytes = ai_utils.count_torch_memory_bytes(model, args)
 
                     mem_bw_val = ""
                     mem_bw_unit = ""
