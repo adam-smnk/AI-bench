@@ -5,7 +5,7 @@
 [![KernelBench Perf](https://github.com/libxsmm/AI-bench/actions/workflows/kernel_bench.yml/badge.svg)](https://github.com/libxsmm/AI-bench/actions/workflows/kernel_bench.yml)
 ![Status](https://img.shields.io/badge/status-beta-yellow)
 
-A benchmarking framework for evaluating AI kernel implementations across multiple backends (PyTorch, Triton, Helion) and devices (CPU, XPU).
+A benchmarking framework for evaluating AI kernel implementations across multiple backends (PyTorch, Triton, Helion, MLIR) and devices (CPU, XPU).
 
 ## Installation
 
@@ -39,6 +39,9 @@ ai-bench --help
 
 # PyTorch on CPU (default)
 ai-bench
+
+# MLIR on CPU
+ai-bench --mlir
 
 # PyTorch on XPU
 ai-bench --xpu
