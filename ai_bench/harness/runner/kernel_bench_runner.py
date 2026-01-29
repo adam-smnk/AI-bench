@@ -80,7 +80,7 @@ class KernelBenchRunner(KernelRunner):
             self.kernels = ai_utils.helion_kernels_dir() / "KernelBench"
         elif self.backend == ai_hc.Backend.MLIR:
             self.kernels = (
-                ai_utils.mlir_kernels_dir() / "KernelBench" / self.device.type
+                ai_utils.mlir_kernels_dir() / self.device.type / "KernelBench"
             )
         else:
             raise ValueError(f"Unsupported backend: {self.backend}")
