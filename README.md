@@ -149,6 +149,8 @@ Notes legend:
 | `--xpu` | Run on Intel XPU (default: CPU) |
 | `--triton` | Use Triton backend (default: PyTorch eager) |
 | `--torch-compile` | Use PyTorch compile mode (default: PyTorch eager) |
+| `--helion` | Use Helion backend (default: PyTorch eager) |
+| `--mlir` | Use MLIR backend (default: PyTorch eager) |
 | `--bench` | Run benchmarks with timing (default: CI validation) |
 | `--gflops` | Report GFLOPS (default: TFLOPS) |
 | `--mbs` | Report MB/s (default: GB/s) |
@@ -158,6 +160,7 @@ Notes legend:
 | `--kernels-dir PATH` | Path to kernels directory (CLI only) |
 | `--triton-kernels-dir PATH` | Path to Triton kernels directory (CLI only) |
 | `--helion-kernels-dir PATH` | Path to Helion kernels directory (CLI only) |
+| `--mlir-kernels-dir PATH` | Path to MLIR kernels directory (CLI only) |
 | `--env-file PATH` | Path to .env file (default: auto-detect) |
 | `--no-env` | Disable loading .env config |
 
@@ -190,6 +193,7 @@ Environment variables used for project configuration:
 | `AIBENCH_KERNELS_DIR` | Path to PyTorch kernels directory |
 | `AIBENCH_TRITON_KERNELS_DIR` | Path to Triton kernels directory |
 | `AIBENCH_HELION_KERNELS_DIR` | Path to Helion kernels directory |
+| `AIBENCH_MLIR_KERNELS_DIR` | Path to MLIR kernels directory |
 
 ## License
 
