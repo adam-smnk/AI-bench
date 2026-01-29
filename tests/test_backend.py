@@ -563,10 +563,8 @@ class Model(torch.nn.Module):
             assert "triton" not in str(pytorch_runner.kernels)
             assert "triton" in str(triton_runner.kernels)
             assert "helion" in str(helion_runner.kernels)
-            assert "mlir" in str(mlir_cpu_runner.kernels)
-            assert "cpu" in str(mlir_cpu_runner.kernels)
-            assert "mlir" in str(mlir_xpu_runner.kernels)
-            assert "xpu" in str(mlir_xpu_runner.kernels)
+            assert "mlir/cpu" in str(mlir_cpu_runner.kernels)
+            assert "mlir/xpu" in str(mlir_xpu_runner.kernels)
 
     def test_run_kernels_with_inits(self, temp_dirs):
         """Test running kernel that requires initialization parameters."""
