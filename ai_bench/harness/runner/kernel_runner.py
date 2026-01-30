@@ -188,7 +188,9 @@ class KernelRunner:
             if self.backend == ai_hc.Backend.PYTORCH_COMPILE:
                 model = torch.compile(model, dynamic=False)
 
-            fn = model.forward
+            # Call model directly to avoid skipping extra hooks if present.
+            # It allows 'torch.compile' decorator to be invoked correctly.
+            fn = model
             args = ai_hc.get_inputs(variant, inputs, device=self.device)
 
             # Simple CI run to verify functionality.
