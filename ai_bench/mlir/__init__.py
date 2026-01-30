@@ -1,5 +1,5 @@
-from .compile import compile_torch
+from .compile import mlir_cpu
 
 __all__ = [
-    "compile_torch",
+    "mlir_cpu",
 ]
