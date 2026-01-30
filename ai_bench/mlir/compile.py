@@ -119,7 +119,7 @@ class MLIRBackend:
         )
 
         for op in module.operation.regions[0].blocks[0].operations:
-            if isinstance(op.opview, func.FuncOp) and op.opview.name == self.entry_func:
+            if isinstance(op.opview, func.FuncOp) and op.opview.name.value == self.entry_func:
                 return op.opview
         return None
 
@@ -135,7 +135,26 @@ class MLIRBackend:
 
     def _move_results_to_args(self, func_op: func.FuncOp):
         results = func_op.type.results
-        return_op = func_op.body.blocks[0].operations[-1]
+        if len(results) == 0:
+            return
+
+        with func_op.context, func_op.location as loc:
+            # Append results to function args and its block args
+            new_func_type = ir.FunctionType.get(inputs=[*func_op.type.inputs, *results], results=results)
+            func_op.function_type = ir.TypeAttr.get(new_func_type)
+            for res in results:
+                func_op.entry_block.add_argument(res, loc)
+            # TODO: Transfer the result attributes to arg attributes
+
+            # Ensure outputs are written to the new result arguments
+            return_op: func.ReturnOp = func_op.entry_block.operations[-1]
+            with ir.InsertionPoint.at_block_terminator(func_op.entry_block):
+                new_returns = []
+                for idx, arg in enumerate(func_op.arguments[-len(results):]):
+                    buf_op = bufferization.materialize_in_destination(arg.type, return_op.operands[idx], arg)
+                    new_returns.append(buf_op)
+                func.return_(new_returns)
+                return_op.erase()
 
     def __call__(
         self, model: torch.fx.GraphModule, inputs: list[torch.Tensor]
@@ -173,6 +192,8 @@ class MLIRBackend:
         # Metadata about function returns is stored for later
         # output buffer allocation.
         results = self._get_results(func_op)
+        # Add extra arguments to store results in external buffers.
+        self._move_results_to_args(func_op)
 
         # Transform MLIR module.
         mlir_mod = self.fn_compile(mlir_mod)
@@ -182,7 +203,7 @@ class MLIRBackend:
         )
 
 
-def mlir_cpu(
+def cpu_backend(
     fn_compile: Callable[[ir.Module], ir.Module],
     dialect: OutputType | str = OutputType.LINALG_ON_TENSORS,
     ir_context: ir.Context | None = None,

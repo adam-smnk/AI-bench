@@ -1,5 +1,5 @@
-from .compile import mlir_cpu
+from .compile import cpu_backend
 
 __all__ = [
-    "mlir_cpu",
+    "cpu_backend",
 ]
