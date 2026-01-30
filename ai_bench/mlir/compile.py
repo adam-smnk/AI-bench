@@ -1,17 +1,15 @@
 from collections.abc import Callable
-from collections.abc import Iterable
 from collections.abc import Sequence
+import contextlib
 from dataclasses import dataclass
 
 from lighthouse import utils as lh_utils
 from lighthouse.ingress.torch import import_from_model
 from mlir import ir
-from mlir.execution_engine import ExecutionEngine
-from mlir.dialects import func
 from mlir.dialects import bufferization
-
+from mlir.dialects import func
+from mlir.execution_engine import ExecutionEngine
 import torch
-import torch.nn as nn
 from torch_mlir.fx import OutputType
 
 
@@ -76,7 +74,7 @@ class JITModel:
         ]
 
         mlir_args = list(args)
-        mlir_args.append(outs)
+        mlir_args.extend(outs)
         mlir_args = lh_utils.torch.to_packed_args(mlir_args)
         self.fn(mlir_args)
 
@@ -119,7 +117,10 @@ class MLIRBackend:
         )
 
         for op in module.operation.regions[0].blocks[0].operations:
-            if isinstance(op.opview, func.FuncOp) and op.opview.name.value == self.entry_func:
+            if (
+                isinstance(op.opview, func.FuncOp)
+                and op.opview.name.value == self.entry_func
+            ):
                 return op.opview
         return None
 
@@ -140,7 +141,9 @@ class MLIRBackend:
 
         with func_op.context, func_op.location as loc:
             # Append results to function args and its block args
-            new_func_type = ir.FunctionType.get(inputs=[*func_op.type.inputs, *results], results=results)
+            new_func_type = ir.FunctionType.get(
+                inputs=[*func_op.type.inputs, *results], results=results
+            )
             func_op.function_type = ir.TypeAttr.get(new_func_type)
             for res in results:
                 func_op.entry_block.add_argument(res, loc)
@@ -150,11 +153,16 @@ class MLIRBackend:
             return_op: func.ReturnOp = func_op.entry_block.operations[-1]
             with ir.InsertionPoint.at_block_terminator(func_op.entry_block):
                 new_returns = []
-                for idx, arg in enumerate(func_op.arguments[-len(results):]):
-                    buf_op = bufferization.materialize_in_destination(arg.type, return_op.operands[idx], arg)
+                for idx, arg in enumerate(func_op.arguments[-len(results) :]):
+                    buf_op = bufferization.materialize_in_destination(
+                        arg.type, return_op.operands[idx], arg
+                    )
                     new_returns.append(buf_op)
                 func.return_(new_returns)
                 return_op.erase()
+
+    def _is_symbolic(self, tensor: torch.Tensor) -> bool:
+        return isinstance(tensor, (torch.SymFloat, torch.SymInt, torch.SymBool))
 
     def __call__(
         self, model: torch.fx.GraphModule, inputs: list[torch.Tensor]
@@ -176,19 +184,29 @@ class MLIRBackend:
         Returns:
             Any: The result of the MLIR function call.
         """
-        # Convert into MLIR IR.
-        mlir_mod = import_from_model(
-            model,
-            sample_args=inputs,
-            dialect=self.dialect,
-            ir_context=self.ctx,
-        )
+        if any(self._is_symbolic(in_tensor) for in_tensor in inputs):
+            raise ValueError(
+                "Dynamic shapes are not supported"
+                " - consider using 'torch.compile(..., dynamic=False)'"
+            )
 
-        # Preprocess entry function.
+        # Suppress importer's messages.
+        # 'torch_mlir' prints to STDOUT which can be noisy.
+        with contextlib.redirect_stdout(None):
+            mlir_mod = import_from_model(
+                model,
+                sample_args=inputs,
+                dialect=self.dialect,
+                ir_context=self.ctx,
+            )
+
+        # Preprocess MLIR entry function.
         func_op: func.FuncOp = self._get_entry_func(mlir_mod)
         if func_op is None:
             raise ValueError(f"Failed to find MLIR entry: {self.entry_func}")
-
+        # Mark the function private as the symbol will not be exposed externally.
+        # Private functions allow for more rewrites.
+        func_op.sym_visibility = ir.StringAttr.get("private", func_op.context)
         # Metadata about function returns is stored for later
         # output buffer allocation.
         results = self._get_results(func_op)
@@ -238,7 +256,6 @@ def cpu_backend(
     Returns:
         object: A PyTorch model or a partially bound decorator.
     """
-    # TODO: Convert into proper torch.compile backend
     return MLIRBackend(
         torch.device("cpu"),
         fn_compile,
