@@ -14,33 +14,35 @@ from torch_mlir.fx import OutputType
 
 
 @dataclass
-class ModelResult:
+class BufferMetadata:
+    """Data buffer metadata."""
+
     shape: list[int]
     dtype: torch.dtype
     device: torch.device
 
 
-class JITModel:
+class JITFunction:
+    """
+    Wrapper around JIT-compiled MLIR function.
+
+    Manages lifetime of the compiled code and allocates result buffers.
+
+    Args:
+        module: MLIR module containing LLVM IR ops.
+        results: Metadata of expected outputs.
+        shared_libs: Paths to external runtime libraries used to execute
+            compiled MLIR function.
+        entry_func: Name of entry function.
+    """
+
     def __init__(
         self,
         module: ir.Module,
-        results: list[ModelResult],
+        results: list[BufferMetadata],
         shared_libs: Sequence[str] = [],
         entry_func: str = "main",
     ):
-        """
-        Initialize the JITModel object.
-        Typically called from the `@lighthouse.runtime.torch.jit` decorator.
-
-        Args:
-            fn_compile_mlir: Function to lower imported MLIR to LLVM IR dialect.
-            model: PyTorch model to be compiled through MLIR.
-            dialect: The target dialect for MLIR IR imported from PyTorch model.
-            ir_context: An optional MLIR context to use for compilation.
-                If not provided, a new default context is created.
-            shared_libs: Paths to external runtime libraries used to execute
-                compiled MLIR function.
-        """
         self.eng = ExecutionEngine(module, opt_level=3, shared_libs=shared_libs)
         self.eng.initialize()
         self.fn = self.eng.lookup(entry_func)
@@ -51,28 +53,22 @@ class JITModel:
         *args: torch.Tensor,
     ) -> list[torch.Tensor]:
         """
-        Jit the PyTorch model and call the MLIR function.
+        Allocate result buffers and call the jitted function.
 
         Args:
-            args: The positional arguments to pass the MLIR function.
-                If all arguments are PyTorch tensors, then they are converted
-                to packed C-type arguments before passing to the MLIR function.
-                Otherwise, `args` are passed directly as is.
-            model_args: The optional positional arguments to the Pytorch model
-                required to jit into MLIR.
-                If not provided, `args` are used instead.
-            kwargs: The keyword arguments to the PyTorch model required to jit
-                into MLIR.
+            args: Input tensors.
 
         Returns:
-            Any: The result of the MLIR function call.
+            Result tensors.
         """
-
+        # Allocate empty buffers to store results.
         outs = [
             torch.empty(res.shape, dtype=res.dtype, device=res.device)
             for res in self.results
         ]
 
+        # Prepare arguments according to MLIR backend's calling convention:
+        # input data followed by output storage buffers.
         mlir_args = list(args)
         mlir_args.extend(outs)
         mlir_args = lh_utils.torch.to_packed_args(mlir_args)
@@ -82,6 +78,31 @@ class JITModel:
 
 
 class MLIRBackend:
+    """
+    A PyTorch backend via MLIR.
+
+    The backend exports PyTorch models into MLIR module. The entry function is first
+    preprocessed to simplify data management. Notably:
+      - MLIR entry function is marked private to enable more optimizations
+      - MLIR result buffers are moved into arguments
+    Use of output argument prevents need for cross Python-MLIR data handling.
+    The output buffer are allocated outside of MLIR (see 'JITFunction') on the target
+    device.
+
+    Then the provided compilation function is used partially lower the IR before
+    the final executable function is created.
+
+    Args:
+        device: Target device.
+        fn_compile: Function to lower imported MLIR to LLVM IR dialect.
+        dialect: The target dialect for MLIR IR imported from PyTorch model.
+        ir_context: An optional MLIR context to use for compilation.
+            If not provided, a new default context is created.
+        shared_libs: Paths to external runtime libraries used to execute
+            compiled MLIR function.
+        entry_func: Name of entry function.
+    """
+
     def __init__(
         self,
         device: torch.device,
@@ -89,28 +110,32 @@ class MLIRBackend:
         dialect: OutputType | str = OutputType.LINALG_ON_TENSORS,
         ir_context: ir.Context | None = None,
         shared_libs: Sequence[str] = [],
+        entry_func: str = "main",
     ):
-        """
-        Initialize the JITModel object.
-        Typically called from the `@lighthouse.runtime.torch.jit` decorator.
+        if dialect not in [
+            OutputType.LINALG_ON_TENSORS,
+            OutputType.TOSA,
+            OutputType.STABLEHLO,
+        ]:
+            raise ValueError(f"Unsupported backend dialect: {dialect}")
 
-        Args:
-            fn_compile: Function to lower imported MLIR to LLVM IR dialect.
-            model: PyTorch model to be compiled through MLIR.
-            dialect: The target dialect for MLIR IR imported from PyTorch model.
-            ir_context: An optional MLIR context to use for compilation.
-                If not provided, a new default context is created.
-            shared_libs: Paths to external runtime libraries used to execute
-                compiled MLIR function.
-        """
         self.device = device
         self.fn_compile = fn_compile
         self.dialect = OutputType.get(dialect)
         self.ctx = ir_context if ir_context is not None else ir.Context()
         self.shared_libs = shared_libs
-        self.entry_func = "main"
+        self.entry_func = entry_func
 
-    def _get_entry_func(self, module: ir.Module) -> func.FuncOp | None:
+    def get_entry_func(self, module: ir.Module) -> func.FuncOp | None:
+        """
+        Find entry function in MLIR module.
+
+        Args:
+            module: MLIR module.
+
+        Returns:
+            Entry function operation if present, None otherwise.
+        """
         assert len(module.operation.regions) == 1, "Expected module with one region"
         assert len(module.operation.regions[0].blocks) == 1, (
             "Expected module with one block"
@@ -124,34 +149,56 @@ class MLIRBackend:
                 return op.opview
         return None
 
-    def _get_results(self, func_op: func.FuncOp) -> list[ModelResult]:
+    def get_results(self, func_op: func.FuncOp) -> list[BufferMetadata]:
+        """
+        Extract metadata about function operation results.
+
+        Args:
+            func_op: MLIR function op.
+
+        Returns:
+            A list of metadata per result.
+        """
         results = []
         for res in func_op.type.results:
             assert isinstance(res, ir.RankedTensorType), "Expected ranked tensor output"
             res_dtype = lh_utils.torch.dtype_from_mlir_type(res.element_type)
             results.append(
-                ModelResult(shape=res.shape, dtype=res_dtype, device=self.device)
+                BufferMetadata(shape=res.shape, dtype=res_dtype, device=self.device)
             )
         return results
 
-    def _move_results_to_args(self, func_op: func.FuncOp):
+    def move_results_to_args(self, func_op: func.FuncOp):
+        """
+        Move function results to arguments.
+        The function is modified in-place.
+
+        Args:
+            func_op: Function op to modify.
+        """
         results = func_op.type.results
         if len(results) == 0:
             return
 
-        with func_op.context, func_op.location as loc:
+        assert all(isinstance(res, ir.RankedTensorType) for res in results), (
+            "Expected only ranked tensor results"
+        )
+
+        with func_op.context:
             # Append results to function args and its block args
             new_func_type = ir.FunctionType.get(
                 inputs=[*func_op.type.inputs, *results], results=results
             )
             func_op.function_type = ir.TypeAttr.get(new_func_type)
             for res in results:
-                func_op.entry_block.add_argument(res, loc)
-            # TODO: Transfer the result attributes to arg attributes
+                func_op.entry_block.add_argument(res, func_op.location)
 
             # Ensure outputs are written to the new result arguments
             return_op: func.ReturnOp = func_op.entry_block.operations[-1]
-            with ir.InsertionPoint.at_block_terminator(func_op.entry_block):
+            with (
+                ir.InsertionPoint.at_block_terminator(func_op.entry_block),
+                return_op.location,
+            ):
                 new_returns = []
                 for idx, arg in enumerate(func_op.arguments[-len(results) :]):
                     buf_op = bufferization.materialize_in_destination(
@@ -161,30 +208,24 @@ class MLIRBackend:
                 func.return_(new_returns)
                 return_op.erase()
 
-    def _is_symbolic(self, tensor: torch.Tensor) -> bool:
+    def is_symbolic(self, tensor: torch.Tensor) -> bool:
+        """Check if a tensor has any symbolic dimensions."""
         return isinstance(tensor, (torch.SymFloat, torch.SymInt, torch.SymBool))
 
     def __call__(
-        self, model: torch.fx.GraphModule, inputs: list[torch.Tensor]
+        self, model: torch.fx.GraphModule, example_inputs: list[torch.Tensor]
     ) -> Callable[[list[torch.Tensor]], list[torch.Tensor]]:
         """
-        Jit the PyTorch model and call the MLIR function.
+        Import a PyTorch model into MLIR and return a compiled function.
 
         Args:
-            args: The positional arguments to pass the MLIR function.
-                If all arguments are PyTorch tensors, then they are converted
-                to packed C-type arguments before passing to the MLIR function.
-                Otherwise, `args` are passed directly as is.
-            model_args: The optional positional arguments to the Pytorch model
-                required to jit into MLIR.
-                If not provided, `args` are used instead.
-            kwargs: The keyword arguments to the PyTorch model required to jit
-                into MLIR.
+            model: Traced PyTorch model.
+            example_inputs: Example input tensors.
 
         Returns:
-            Any: The result of the MLIR function call.
+            Callable function.
         """
-        if any(self._is_symbolic(in_tensor) for in_tensor in inputs):
+        if any(self.is_symbolic(in_tensor) for in_tensor in example_inputs):
             raise ValueError(
                 "Dynamic shapes are not supported"
                 " - consider using 'torch.compile(..., dynamic=False)'"
@@ -195,28 +236,27 @@ class MLIRBackend:
         with contextlib.redirect_stdout(None):
             mlir_mod = import_from_model(
                 model,
-                sample_args=inputs,
+                sample_args=example_inputs,
                 dialect=self.dialect,
                 ir_context=self.ctx,
             )
 
         # Preprocess MLIR entry function.
-        func_op: func.FuncOp = self._get_entry_func(mlir_mod)
+        func_op: func.FuncOp = self.get_entry_func(mlir_mod)
         if func_op is None:
             raise ValueError(f"Failed to find MLIR entry: {self.entry_func}")
         # Mark the function private as the symbol will not be exposed externally.
         # Private functions allow for more rewrites.
         func_op.sym_visibility = ir.StringAttr.get("private", func_op.context)
-        # Metadata about function returns is stored for later
-        # output buffer allocation.
-        results = self._get_results(func_op)
+        # Metadata about function returns is stored for later output buffer allocation.
+        results = self.get_results(func_op)
         # Add extra arguments to store results in external buffers.
-        self._move_results_to_args(func_op)
+        self.move_results_to_args(func_op)
 
         # Transform MLIR module.
         mlir_mod = self.fn_compile(mlir_mod)
 
-        return JITModel(
+        return JITFunction(
             mlir_mod, results, shared_libs=self.shared_libs, entry_func=self.entry_func
         )
 
@@ -226,32 +266,18 @@ def cpu_backend(
     dialect: OutputType | str = OutputType.LINALG_ON_TENSORS,
     ir_context: ir.Context | None = None,
     shared_libs: Sequence[str] = [],
-) -> Callable[[list[torch.Tensor]], list[torch.Tensor]]:
+) -> Callable[[torch.fx.GraphModule, list[torch.Tensor]], Callable]:
     """
-    Decorator for JIT-compiling a PyTorch model using MLIR.
-
-    When a PyTorch model class is passed, the model must be initialized first.
-    Only calls to instantiated model objects are JIT-compiled.
-
-    When a jitted MLIR function is called, input arguments are implicitly converted
-    into packed C-type arguments if all inputs are PyTorch tensors.
-    Otherwise, the input arguments are directly passed to the jitted function.
-
-    The jitted function signature depends on the provided MLIR compilation function
-    `fn_compile` and may differ from the original PyTorch model call signature.
-    See 'JITModel' for further calling convention details.
+    CPU backend for JIT-compiling a PyTorch model using MLIR.
 
     Args:
         fn_compile: Function to compile imported MLIR to LLVM IR dialect.
             The function accepts an MLIR module, and returns an MLIR module with
             transformed IR.
-        model: PyTorch model to be compiled with MLIR.
-            If a class or None, a decorator is returned.
         dialect: The target dialect for MLIR IR imported from PyTorch model.
         ir_context: An optional MLIR context to use for compilation.
         shared_libs: Paths to external runtime libraries used to execute
             compiled MLIR function.
-        kwargs: The keyword arguments for the PyTorch model constructor.
 
     Returns:
         object: A PyTorch model or a partially bound decorator.
