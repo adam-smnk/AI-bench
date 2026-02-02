@@ -184,28 +184,40 @@ class MLIRBackend:
             "Expected only ranked tensor results"
         )
 
-        with func_op.context:
-            # Append results to function args and its block args
+        with func_op.context, func_op.location:
+            # Current bufferization can't handle return op fed by new tensor values
+            # created using 'materialize_in_destination' op (missing region branch
+            # interface).
+            #
+            # Create equivalent memref buffers, instead.
+            # PyTorch tensors are later converted to ranked memrefs anyway.
+            memref_bufs = [
+                ir.MemRefType.get(res.shape, res.element_type) for res in results
+            ]
+
+            # Append results to function args and its block args.
             new_func_type = ir.FunctionType.get(
-                inputs=[*func_op.type.inputs, *results], results=results
+                inputs=[*func_op.type.inputs, *memref_bufs], results=[]
             )
             func_op.function_type = ir.TypeAttr.get(new_func_type)
-            for res in results:
+            for res in memref_bufs:
                 func_op.entry_block.add_argument(res, func_op.location)
 
-            # Ensure outputs are written to the new result arguments
+            # Ensure outputs are written to the new result arguments.
             return_op: func.ReturnOp = func_op.entry_block.operations[-1]
             with (
                 ir.InsertionPoint.at_block_terminator(func_op.entry_block),
                 return_op.location,
             ):
-                new_returns = []
                 for idx, arg in enumerate(func_op.arguments[-len(results) :]):
-                    buf_op = bufferization.materialize_in_destination(
-                        arg.type, return_op.operands[idx], arg
+                    bufferization.materialize_in_destination(
+                        None,
+                        return_op.operands[idx],
+                        arg,
+                        restrict=True,
+                        writable=True,
                     )
-                    new_returns.append(buf_op)
-                func.return_(new_returns)
+                func.return_([])
                 return_op.erase()
 
     def is_symbolic(self, tensor: torch.Tensor) -> bool:
