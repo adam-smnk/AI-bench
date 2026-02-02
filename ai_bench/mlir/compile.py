@@ -30,7 +30,7 @@ class JITFunction:
 
     Args:
         module: MLIR module containing LLVM IR ops.
-        results: Metadata of expected outputs.
+        results: Metadata of expected output buffers.
         shared_libs: Paths to external runtime libraries used to execute
             compiled MLIR function.
         entry_func: Name of entry function.
