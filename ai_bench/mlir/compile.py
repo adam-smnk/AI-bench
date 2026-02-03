@@ -2,6 +2,7 @@ from collections.abc import Callable
 from collections.abc import Sequence
 import contextlib
 from dataclasses import dataclass
+import os
 
 from lighthouse import utils as lh_utils
 from lighthouse.ingress.torch import import_from_model
@@ -153,7 +154,11 @@ class MLIRBackend:
         self.fn_compile = fn_compile
         self.dialect = OutputType.get(dialect)
         self.ctx = ir_context if ir_context is not None else ir.Context()
-        self.shared_libs = shared_libs
+        self.shared_libs = list(shared_libs)
+        lib_paths = os.environ.get("AIBENCH_MLIR_LIB_PATH")
+        if lib_paths:
+            libs = lib_paths.split(":")
+            self.shared_libs.extend(libs)
         self.entry_func = entry_func
 
     def get_entry_func(self, module: ir.Module) -> func.FuncOp | None:
@@ -282,6 +287,8 @@ class MLIRBackend:
                 dialect=self.dialect,
                 ir_context=self.ctx,
             )
+        if os.environ.get("AIBENCH_MLIR_DUMP"):
+            print(mlir_mod)
 
         # Preprocess MLIR entry function.
         func_op: func.FuncOp = self.get_entry_func(mlir_mod)

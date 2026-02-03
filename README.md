@@ -197,6 +197,8 @@ Environment variables used for project configuration:
 | `AIBENCH_TRITON_KERNELS_DIR` | Path to Triton kernels directory |
 | `AIBENCH_HELION_KERNELS_DIR` | Path to Helion kernels directory |
 | `AIBENCH_MLIR_KERNELS_DIR` | Path to MLIR kernels directory |
+| `AIBENCH_MLIR_LIB_PATH` | Paths to MLIR shared libraries (colon separated) |
+| `AIBENCH_MLIR_DUMP` | Dump imported MLIR IR |
 
 ## License
 
