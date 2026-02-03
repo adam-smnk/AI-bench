@@ -53,6 +53,7 @@ xpu = [
 ]
 mlir = [
   "lighthouse[ingress_torch_mlir]",
+  "ml_dtypes",
 ]
 
 [dependency-groups]

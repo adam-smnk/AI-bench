@@ -9,6 +9,7 @@ from mlir import ir
 from mlir.dialects import bufferization
 from mlir.dialects import func
 from mlir.execution_engine import ExecutionEngine
+from mlir.runtime.np_to_memref import get_ranked_memref_descriptor
 import torch
 from torch_mlir.fx import OutputType
 
@@ -48,6 +49,35 @@ class JITFunction:
         self.fn = self.eng.lookup(entry_func)
         self.results = results
 
+    # TODO: Move to lighthouse
+    def to_mlir_packed_args(self, inputs: list[torch.Tensor]) -> list:
+        """
+        Convert a list of PyTorch tensors into packed ctype arguments.
+        A wrapper around lighthouse's converter extended with bf16 support.
+
+        Args:
+            inputs: Input tensors.
+
+        Returns:
+            A list of packed MLIR ctype arguments.
+        """
+        import ml_dtypes
+
+        memrefs = []
+        for in_tensor in inputs:
+            if in_tensor.dtype == torch.bfloat16:
+                # numpy doesn't support bf16 natively which disables
+                # direct conversion from PyTorch.
+                # Solved through non-destructive type casting.
+                nparray = in_tensor.view(dtype=torch.uint16).numpy()
+                nparray = nparray.view(ml_dtypes.bfloat16)
+                memref = get_ranked_memref_descriptor(nparray)
+            else:
+                memref = lh_utils.torch.to_memref(in_tensor)
+            memrefs.append(memref)
+
+        return lh_utils.memref.to_packed_args(memrefs)
+
     def __call__(
         self,
         *args: torch.Tensor,
@@ -71,7 +101,7 @@ class JITFunction:
         # input data followed by output storage buffers.
         mlir_args = list(args)
         mlir_args.extend(outs)
-        mlir_args = lh_utils.torch.to_packed_args(mlir_args)
+        mlir_args = self.to_mlir_packed_args(mlir_args)
         self.fn(mlir_args)
 
         return outs
