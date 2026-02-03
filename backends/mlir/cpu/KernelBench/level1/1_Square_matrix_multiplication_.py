@@ -10,6 +10,8 @@ import torch.nn as nn
 
 import ai_bench.mlir
 
+TILE_SIZE = 64
+
 
 def tile_and_vector_gemm(ctx: ir.Context) -> ir.Module:
     with ctx, ir.Location.unknown(context=ctx):
@@ -35,14 +37,16 @@ def tile_and_vector_gemm(ctx: ir.Context) -> ir.Module:
                 named_seq.bodyTarget, ["linalg.matmul"]
             ).result
             tiled_mm = structured.FuseOp(
-                mm, tile_sizes=[64, 64], apply_cleanup=True
+                mm, tile_sizes=[TILE_SIZE, TILE_SIZE], apply_cleanup=True
             ).results[0]
 
             # Tile for better vectorization.
             tiled_fill = structured.MatchOp.match_op_names(
                 named_seq.bodyTarget, ["linalg.fill"]
             ).result
-            reg_fill = structured.TileUsingForOp(tiled_fill, sizes=[1, 64]).results[0]
+            reg_fill = structured.TileUsingForOp(
+                tiled_fill, sizes=[1, TILE_SIZE]
+            ).results[0]
 
             # Register tiling.
             reg_mm = structured.TileUsingForOp(tiled_mm, sizes=[8, 32, 1]).results[0]
@@ -151,4 +155,11 @@ class Model(nn.Module):
         super(Model, self).__init__()
 
     def forward(self, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
+        assert all(dim % TILE_SIZE == 0 for dim in A.shape), (
+            f"A shape must be multiple of {TILE_SIZE}"
+        )
+        assert all(dim % TILE_SIZE == 0 for dim in B.shape), (
+            f"B shape must be multiple of {TILE_SIZE}"
+        )
+
         return torch.matmul(A, B)
