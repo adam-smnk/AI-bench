@@ -81,7 +81,7 @@ conflicts = [
 [tool.uv.sources]
 torch = { index = "pytorch" }
 pytorch-triton-xpu = { index = "pytorch" }
-lighthouse = { git = "https://github.com/llvm/lighthouse", rev = "db37707" }
+lighthouse = { git = "https://github.com/llvm/lighthouse", rev = "d32d1cf" }
 
 [[tool.uv.index]]
 name = "pytorch"
