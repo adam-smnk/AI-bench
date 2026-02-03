@@ -52,7 +52,7 @@ xpu = [
   "helion==0.2.9",
 ]
 mlir = [
-  "lighthouse[ingress_torch_mlir]"
+  "lighthouse[ingress_torch_mlir]",
 ]
 
 [dependency-groups]
