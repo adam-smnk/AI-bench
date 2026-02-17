@@ -81,7 +81,7 @@ def tile_and_vector_gemm(ctx: ir.Context) -> ir.Module:
             ).result
             reg_mm = structured.TileUsingForOp(brgemm, sizes=[1, 8, 32, 1]).results[0]
 
-            # # Vectorize operations.
+            # Vectorize operations.
             structured.structured_vectorize(reg_mm, [], create_named_contraction=True)
             structured.structured_vectorize(reg_fill, [])
             with ir.InsertionPoint(
@@ -204,6 +204,47 @@ def pack_gemm(ctx: ir.Context) -> ir.Module:
     return schedule
 
 
+def vector_copy(ctx: ir.Context) -> ir.Module:
+    """
+    Specialized schedule for Linalg operations.
+
+    Tiling and vectorization is progressively applied to
+    achieve SIMD code generation.
+
+    Args:
+        ctx: MLIR context.
+    Returns:
+        MLIR transform module.
+    """
+    with ctx, ir.Location.unknown(context=ctx):
+        # Create a transform module.
+        schedule = ir.Module.create()
+        schedule.operation.attributes["transform.with_named_sequence"] = (
+            ir.UnitAttr.get()
+        )
+        with ir.InsertionPoint(schedule.body):
+            named_seq = transform.NamedSequenceOp(
+                "__transform_main",
+                [transform.any_op_t()],
+                [],
+                arg_attrs=[{"transform.readonly": ir.UnitAttr.get()}],
+            )
+
+        # Create the schedule.
+        with ir.InsertionPoint(named_seq.body):
+            anytype = transform.any_op_t()
+
+            func = structured.MatchOp.match_op_names(
+                named_seq.bodyTarget, ["func.func"]
+            ).result
+            structured.structured_vectorize_children_and_apply_patterns(anytype, func)
+            cleanup(named_seq.bodyTarget)
+
+            transform.yield_()
+
+        return schedule
+
+
 def lower_to_llvm(module: ir.Module) -> ir.Module:
     """
     Lower MLIR ops within the module to MLIR LLVM IR dialect.
@@ -241,8 +282,14 @@ def lower_to_llvm(module: ir.Module) -> ir.Module:
     pm.add("canonicalize")
 
     # pm.add("print-ir")
+    pm.run(module.operation)
+
+    sched = vector_copy(module.context)
+    sched.body.operations[0].apply(module)
+    # print(module)
 
     # Lower to LLVM.
+    pm = PassManager("builtin.module", module.context)
     pm.add("convert-linalg-to-loops")
     pm.add("expand-strided-metadata")
     pm.add("canonicalize")
