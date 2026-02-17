@@ -4,6 +4,8 @@ from mlir.dialects.transform import gpu
 from mlir.dialects.transform import loop
 from mlir.dialects.transform import structured
 from mlir.dialects.transform import vector
+from mlir.dialects.transform import tensor
+from mlir.dialects.transform import x86vector
 from mlir.passmanager import PassManager
 import torch
 import torch.nn as nn
@@ -11,6 +13,13 @@ import torch.nn as nn
 import ai_bench.mlir
 
 TILE_SIZE = 64
+
+
+def cleanup(target):
+    func = structured.MatchOp.match_op_names(target, ["func.func"]).result
+    transform.apply_cse(func)
+    with ir.InsertionPoint(transform.ApplyPatternsOp(func).patterns):
+        transform.apply_patterns_canonicalization()
 
 
 def tile_and_vector_gemm(ctx: ir.Context) -> ir.Module:
@@ -44,12 +53,11 @@ def tile_and_vector_gemm(ctx: ir.Context) -> ir.Module:
             anytype = transform.any_op_t()
 
             # GEMM tiling.
+            gemm_name = "linalg.generic"
             mm = structured.MatchOp.match_op_names(
-                named_seq.bodyTarget, ["linalg.matmul"]
+                named_seq.bodyTarget, [gemm_name]
             ).result
-            tiled_mm = structured.FuseOp(
-                mm, tile_sizes=[TILE_SIZE, TILE_SIZE], apply_cleanup=True
-            ).results[0]
+            structured.FuseOp(mm, tile_sizes=[1, 1], apply_cleanup=True).results[0]
 
             # Tile buffer initialization for better vectorization.
             tiled_fill = structured.MatchOp.match_op_names(
@@ -59,12 +67,29 @@ def tile_and_vector_gemm(ctx: ir.Context) -> ir.Module:
                 tiled_fill, sizes=[1, TILE_SIZE]
             ).results[0]
 
-            # Register tiling.
-            reg_mm = structured.TileUsingForOp(tiled_mm, sizes=[8, 32, 1]).results[0]
+            with ir.InsertionPoint(
+                transform.ApplyPatternsOp(named_seq.bodyTarget).patterns
+            ):
+                # structured.apply_patterns_linalg_fold_unit_extent_dims_via_reshapes()
+                structured.apply_patterns_linalg_fold_unit_extent_dims_via_slices()
+                structured.apply_patterns_linalg_fold_pack_unpack_into_empty()
+            cleanup(named_seq.bodyTarget)
 
-            # Vectorize operations.
+            # Register tiling.
+            brgemm = structured.MatchOp.match_op_names(
+                named_seq.bodyTarget, [gemm_name]
+            ).result
+            reg_mm = structured.TileUsingForOp(brgemm, sizes=[1, 8, 32, 1]).results[0]
+
+            # # Vectorize operations.
             structured.structured_vectorize(reg_mm, [], create_named_contraction=True)
             structured.structured_vectorize(reg_fill, [])
+            with ir.InsertionPoint(
+                transform.ApplyPatternsOp(named_seq.bodyTarget).patterns
+            ):
+                vector.apply_patterns_vector_reduction_to_contract()
+                vector.apply_patterns_vector_transfer_permutation_patterns()
+            cleanup(named_seq.bodyTarget)
 
             # Loop hoisting.
             all_loops = structured.MatchOp(
@@ -83,14 +108,13 @@ def tile_and_vector_gemm(ctx: ir.Context) -> ir.Module:
                 vector.apply_patterns_vector_cast_away_vector_leading_one_dim()
                 transform.apply_patterns_canonicalization()
 
-            # Lower to broadcast+FMA instructions.
+            # # Lower to broadcast+FMA instructions.
             with ir.InsertionPoint(
                 transform.ApplyPatternsOp(named_seq.bodyTarget).patterns
             ):
-                vector.apply_patterns_vector_lower_contraction(
-                    lowering_strategy=vector.VectorContractLowering.OuterProduct
-                )
-                vector.apply_patterns_vector_lower_outerproduct()
+                x86vector.apply_patterns_x86vector_vector_contract_to_fma()
+                x86vector.apply_patterns_x86vector_sink_vector_producer_ops()
+                vector.apply_patterns_vector_flatten_vector_transfer_ops()
 
             # Cleanup.
             transform.apply_cse(named_seq.bodyTarget)
@@ -98,6 +122,83 @@ def tile_and_vector_gemm(ctx: ir.Context) -> ir.Module:
                 transform.ApplyPatternsOp(named_seq.bodyTarget).patterns
             ):
                 transform.apply_patterns_canonicalization()
+
+            transform.yield_()
+    return schedule
+
+
+def pack_gemm(ctx: ir.Context) -> ir.Module:
+    with ctx, ir.Location.unknown(context=ctx):
+        # Create a transform module.
+        schedule = ir.Module.create()
+        schedule.operation.attributes["transform.with_named_sequence"] = (
+            ir.UnitAttr.get()
+        )
+        with ir.InsertionPoint(schedule.body):
+            named_seq = transform.NamedSequenceOp(
+                "__transform_main",
+                [transform.any_op_t()],
+                [],
+                arg_attrs=[{"transform.readonly": ir.UnitAttr.get()}],
+            )
+
+        # Create the schedule.
+        with ir.InsertionPoint(named_seq.body):
+            anytype = transform.any_op_t()
+
+            func = structured.MatchOp.match_op_names(
+                named_seq.bodyTarget, ["func.func"]
+            ).result
+            transform.apply_registered_pass(
+                anytype,
+                func,
+                "linalg-block-pack-matmul",
+                options={
+                    "block-factors": (TILE_SIZE, TILE_SIZE, TILE_SIZE),
+                    "rhs-transpose-outer-blocks": True,
+                    "rhs-transpose-inner-blocks": False,
+                },
+            )
+
+            with ir.InsertionPoint(
+                transform.ApplyPatternsOp(named_seq.bodyTarget).patterns
+            ):
+                structured.apply_patterns_linalg_fold_pack_unpack_into_empty()
+                structured.apply_patterns_tensor_fold_into_pack_and_unpack()
+            cleanup(named_seq.bodyTarget)
+
+            packs = structured.MatchOp.match_op_names(
+                named_seq.bodyTarget, ["linalg.pack"]
+            )
+            foreach_pack = transform.ForeachOp([], (packs,))
+            with ir.InsertionPoint(foreach_pack.body):
+                pack_op = foreach_pack.bodyTargets[0]
+                tiled_pack = structured.FuseOp(
+                    pack_op, tile_sizes=[1, 1], apply_cleanup=True
+                ).results[0]
+                structured.structured_lower_pack(anytype, anytype, anytype, tiled_pack)
+                transform.yield_()
+
+            unpacks = structured.MatchOp.match_op_names(
+                named_seq.bodyTarget, ["linalg.unpack"]
+            )
+            foreach_unpack = transform.ForeachOp([], (unpacks,))
+            with ir.InsertionPoint(foreach_unpack.body):
+                unpack_op = foreach_unpack.bodyTargets[0]
+                tiled_unpack = structured.FuseOp(
+                    unpack_op, tile_sizes=[TILE_SIZE, TILE_SIZE], apply_cleanup=True
+                ).results[0]
+                structured.structured_lower_unpack(
+                    anytype, anytype, anytype, anytype, tiled_unpack
+                )
+                transform.yield_()
+
+            # Cleanup.
+            with ir.InsertionPoint(
+                transform.ApplyPatternsOp(named_seq.bodyTarget).patterns
+            ):
+                tensor.apply_patterns_tensor_merge_consecutive_insert_extract_slice()
+            cleanup(named_seq.bodyTarget)
 
             transform.yield_()
     return schedule
@@ -112,9 +213,14 @@ def lower_to_llvm(module: ir.Module) -> ir.Module:
     Returns:
         MLIR module with lowered IR.
     """
+    pack_sched = pack_gemm(module.context)
+    pack_sched.body.operations[0].apply(module)
+    # print(module)
+
     # Apply initial transformations using schedule.
     sched = tile_and_vector_gemm(module.context)
     sched.body.operations[0].apply(module)
+    # print(module)
 
     # Build pipeline.
     pm = PassManager("builtin.module", module.context)
@@ -133,6 +239,8 @@ def lower_to_llvm(module: ir.Module) -> ir.Module:
     pm.add("convert-bufferization-to-memref")
     pm.add("cse")
     pm.add("canonicalize")
+
+    # pm.add("print-ir")
 
     # Lower to LLVM.
     pm.add("convert-linalg-to-loops")
