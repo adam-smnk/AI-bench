@@ -63,9 +63,7 @@ def tile_and_vector_gemm(ctx: ir.Context) -> ir.Module:
             tiled_fill = structured.MatchOp.match_op_names(
                 named_seq.bodyTarget, ["linalg.fill"]
             ).result
-            reg_fill = structured.TileUsingForOp(
-                tiled_fill, sizes=[1, TILE_SIZE]
-            ).results[0]
+            reg_fill = structured.TileUsingForOp(tiled_fill, sizes=[1, 1]).results[0]
 
             with ir.InsertionPoint(
                 transform.ApplyPatternsOp(named_seq.bodyTarget).patterns
@@ -176,8 +174,19 @@ def pack_gemm(ctx: ir.Context) -> ir.Module:
                 tiled_pack = structured.FuseOp(
                     pack_op, tile_sizes=[1, 1], apply_cleanup=True
                 ).results[0]
-                structured.structured_lower_pack(anytype, anytype, anytype, tiled_pack)
+                _, _, transpose = structured.structured_lower_pack(
+                    anytype,
+                    anytype,
+                    anytype,
+                    tiled_pack,
+                    lower_pad_like_with_insert_slice=False,
+                )
+                structured.TileUsingForOp(
+                    transpose, sizes=[1, 1, 1]
+                )
                 transform.yield_()
+            cleanup(named_seq.bodyTarget)
+            # transform.print_()
 
             unpacks = structured.MatchOp.match_op_names(
                 named_seq.bodyTarget, ["linalg.unpack"]
@@ -199,6 +208,7 @@ def pack_gemm(ctx: ir.Context) -> ir.Module:
             ):
                 tensor.apply_patterns_tensor_merge_consecutive_insert_extract_slice()
             cleanup(named_seq.bodyTarget)
+            # transform.print_()
 
             transform.yield_()
     return schedule
@@ -233,6 +243,7 @@ def vector_copy(ctx: ir.Context) -> ir.Module:
         # Create the schedule.
         with ir.InsertionPoint(named_seq.body):
             anytype = transform.any_op_t()
+            # transform.print_()
 
             func = structured.MatchOp.match_op_names(
                 named_seq.bodyTarget, ["func.func"]
@@ -263,7 +274,7 @@ def lower_to_llvm(module: ir.Module) -> ir.Module:
     sched.body.operations[0].apply(module)
     # print(module)
 
-    # Build pipeline.
+    # # Build pipeline.
     pm = PassManager("builtin.module", module.context)
 
     # Preprocess.
@@ -281,8 +292,8 @@ def lower_to_llvm(module: ir.Module) -> ir.Module:
     pm.add("cse")
     pm.add("canonicalize")
 
-    # pm.add("print-ir")
     pm.run(module.operation)
+    # print(module)
 
     sched = vector_copy(module.context)
     sched.body.operations[0].apply(module)
