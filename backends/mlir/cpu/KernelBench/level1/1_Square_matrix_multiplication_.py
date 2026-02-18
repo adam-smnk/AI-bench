@@ -58,12 +58,16 @@ def tile_and_vector_gemm(ctx: ir.Context) -> ir.Module:
                 named_seq.bodyTarget, [gemm_name]
             ).result
             structured.FuseOp(mm, tile_sizes=[1, 1], apply_cleanup=True).results[0]
+            # transform.print_()
 
             # Tile buffer initialization for better vectorization.
             tiled_fill = structured.MatchOp.match_op_names(
                 named_seq.bodyTarget, ["linalg.fill"]
             ).result
-            reg_fill = structured.TileUsingForOp(tiled_fill, sizes=[1, 1]).results[0]
+            reg_fill, *loops = structured.TileUsingForOp(
+                tiled_fill, sizes=[1, 1, 4]
+            ).results
+            # transform.print_()
 
             with ir.InsertionPoint(
                 transform.ApplyPatternsOp(named_seq.bodyTarget).patterns
@@ -72,6 +76,7 @@ def tile_and_vector_gemm(ctx: ir.Context) -> ir.Module:
                 structured.apply_patterns_linalg_fold_unit_extent_dims_via_slices()
                 structured.apply_patterns_linalg_fold_pack_unpack_into_empty()
             cleanup(named_seq.bodyTarget)
+            # transform.print_()
 
             # Register tiling.
             brgemm = structured.MatchOp.match_op_names(
@@ -88,6 +93,7 @@ def tile_and_vector_gemm(ctx: ir.Context) -> ir.Module:
                 vector.apply_patterns_vector_reduction_to_contract()
                 vector.apply_patterns_vector_transfer_permutation_patterns()
             cleanup(named_seq.bodyTarget)
+            # transform.print_()
 
             # Loop hoisting.
             all_loops = structured.MatchOp(
@@ -163,7 +169,9 @@ def pack_gemm(ctx: ir.Context) -> ir.Module:
             ):
                 structured.apply_patterns_linalg_fold_pack_unpack_into_empty()
                 structured.apply_patterns_tensor_fold_into_pack_and_unpack()
+                transform.apply_patterns_canonicalization()
             cleanup(named_seq.bodyTarget)
+            # transform.print_()
 
             packs = structured.MatchOp.match_op_names(
                 named_seq.bodyTarget, ["linalg.pack"]
@@ -181,9 +189,7 @@ def pack_gemm(ctx: ir.Context) -> ir.Module:
                     tiled_pack,
                     lower_pad_like_with_insert_slice=False,
                 )
-                structured.TileUsingForOp(
-                    transpose, sizes=[1, 1, 1]
-                )
+                structured.TileUsingForOp(transpose, sizes=[1, 1, 1])
                 transform.yield_()
             cleanup(named_seq.bodyTarget)
             # transform.print_()
@@ -251,6 +257,12 @@ def vector_copy(ctx: ir.Context) -> ir.Module:
             structured.structured_vectorize_children_and_apply_patterns(anytype, func)
             cleanup(named_seq.bodyTarget)
 
+            with ir.InsertionPoint(
+                transform.ApplyPatternsOp(named_seq.bodyTarget).patterns
+            ):
+                vector.apply_patterns_vector_flatten_vector_transfer_ops()
+                transform.apply_patterns_canonicalization()
+
             transform.yield_()
 
         return schedule
@@ -274,7 +286,7 @@ def lower_to_llvm(module: ir.Module) -> ir.Module:
     sched.body.operations[0].apply(module)
     # print(module)
 
-    # # Build pipeline.
+    # Build pipeline.
     pm = PassManager("builtin.module", module.context)
 
     # Preprocess.
