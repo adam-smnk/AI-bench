@@ -189,7 +189,9 @@ def pack_gemm(ctx: ir.Context) -> ir.Module:
                     tiled_pack,
                     lower_pad_like_with_insert_slice=False,
                 )
-                structured.TileUsingForOp(transpose, sizes=[1, 1, 1])
+                _, *loops = structured.TileUsingForOp(
+                    transpose, sizes=[1, 1, 1]
+                ).results
                 transform.yield_()
             cleanup(named_seq.bodyTarget)
             # transform.print_()
@@ -200,12 +202,40 @@ def pack_gemm(ctx: ir.Context) -> ir.Module:
             foreach_unpack = transform.ForeachOp([], (unpacks,))
             with ir.InsertionPoint(foreach_unpack.body):
                 unpack_op = foreach_unpack.bodyTargets[0]
-                tiled_unpack = structured.FuseOp(
-                    unpack_op, tile_sizes=[TILE_SIZE, TILE_SIZE], apply_cleanup=True
+                tiled_unpack = structured.TileUsingForOp(
+                    unpack_op, sizes=[TILE_SIZE, TILE_SIZE]
                 ).results[0]
-                structured.structured_lower_unpack(
-                    anytype, anytype, anytype, anytype, tiled_unpack
+                _, transpose, *_ = structured.structured_lower_unpack(
+                    anytype,
+                    anytype,
+                    anytype,
+                    anytype,
+                    tiled_unpack,
+                    lower_unpad_like_with_extract_slice=False,
                 )
+                structured.TileUsingForOp(transpose, sizes=[1, 1, 1])
+                # TODO: This should come from unpack
+                copy = structured.MatchOp.match_op_names(
+                    named_seq.bodyTarget, ["linalg.copy"]
+                ).result
+                structured.TileUsingForOp(copy, sizes=[1])
+                transform.yield_()
+
+            copies = structured.MatchOp.match_op_names(
+                named_seq.bodyTarget, ["linalg.copy"]
+            )
+            foreach_copy = transform.ForeachOp([], (copies,))
+            with ir.InsertionPoint(foreach_copy.body):
+                copy = foreach_copy.bodyTargets[0]
+                structured.structured_vectorize(copy, [])
+                transform.yield_()
+            transposes = structured.MatchOp.match_op_names(
+                named_seq.bodyTarget, ["linalg.transpose"]
+            )
+            foreach_transpose = transform.ForeachOp([], (transposes,))
+            with ir.InsertionPoint(foreach_transpose.body):
+                transpose = foreach_transpose.bodyTargets[0]
+                structured.structured_vectorize(transpose, [])
                 transform.yield_()
 
             # Cleanup.
@@ -213,6 +243,7 @@ def pack_gemm(ctx: ir.Context) -> ir.Module:
                 transform.ApplyPatternsOp(named_seq.bodyTarget).patterns
             ):
                 tensor.apply_patterns_tensor_merge_consecutive_insert_extract_slice()
+                transform.apply_patterns_canonicalization()
             cleanup(named_seq.bodyTarget)
             # transform.print_()
 
