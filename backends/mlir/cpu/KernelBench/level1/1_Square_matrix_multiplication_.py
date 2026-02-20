@@ -65,7 +65,7 @@ def tile_and_vector_gemm(ctx: ir.Context) -> ir.Module:
                 named_seq.bodyTarget, ["linalg.fill"]
             ).result
             reg_fill, *loops = structured.TileUsingForOp(
-                tiled_fill, sizes=[1, 1, 4]
+                tiled_fill, sizes=[1, 1, 1]
             ).results
             # transform.print_()
 
@@ -79,13 +79,57 @@ def tile_and_vector_gemm(ctx: ir.Context) -> ir.Module:
             # transform.print_()
 
             # Register tiling.
+            reg_tile_m = 8
+            reg_tile_n = 32
+            reg_tile_k = 2
             brgemm = structured.MatchOp.match_op_names(
                 named_seq.bodyTarget, [gemm_name]
             ).result
-            reg_mm = structured.TileUsingForOp(brgemm, sizes=[1, 8, 32, 1]).results[0]
+            _, *gemm_loops = structured.TileUsingForOp(
+                brgemm, sizes=[1, reg_tile_m, reg_tile_n, reg_tile_k]
+            ).results
+            assert TILE_SIZE % reg_tile_k == 0, "Invalid K reg tiling"
+            if TILE_SIZE % reg_tile_n != 0:
+                loop.LoopPeelOp(
+                    anytype,
+                    anytype,
+                    gemm_loops[2],
+                    peel_front=False,
+                    fail_if_already_divisible=False,
+                )
+            if TILE_SIZE % reg_tile_m != 0:
+                loop.LoopPeelOp(
+                    anytype,
+                    anytype,
+                    gemm_loops[1],
+                    peel_front=False,
+                    fail_if_already_divisible=False,
+                )
+            cleanup(named_seq.bodyTarget)
+            # transform.print_()
+
+            # Register unroll.
+            gemms = structured.MatchOp.match_op_names(named_seq.bodyTarget, [gemm_name])
+            foreach_gemm = transform.ForeachOp([], (gemms,))
+            with ir.InsertionPoint(foreach_gemm.body):
+                gemm = foreach_gemm.bodyTargets[0]
+                _, *loops = structured.TileUsingForOp(
+                    gemm, sizes=[0, 1, reg_tile_n, 1]
+                ).results
+                loop.loop_unroll(loops[2], reg_tile_k)
+                loop.loop_unroll(loops[0], reg_tile_m)
+                transform.yield_()
+            cleanup(named_seq.bodyTarget)
+            # transform.print_()
 
             # Vectorize operations.
-            structured.structured_vectorize(reg_mm, [], create_named_contraction=True)
+            gemms = structured.MatchOp.match_op_names(named_seq.bodyTarget, [gemm_name])
+            foreach_gemm = transform.ForeachOp([], (gemms,))
+            with ir.InsertionPoint(foreach_gemm.body):
+                gemm = foreach_gemm.bodyTargets[0]
+                structured.structured_vectorize(gemm, [], create_named_contraction=True)
+                transform.yield_()
+            # structured.structured_vectorize(reg_mm, [], create_named_contraction=True)
             structured.structured_vectorize(reg_fill, [])
             with ir.InsertionPoint(
                 transform.ApplyPatternsOp(named_seq.bodyTarget).patterns
@@ -103,14 +147,17 @@ def tile_and_vector_gemm(ctx: ir.Context) -> ir.Module:
             ).results
             transform.apply_licm(all_loops)
             loop.loop_hoist_loop_invariant_subsets(all_loops)
+            # transform.print_()
 
             # Unroll GEMM.
             with ir.InsertionPoint(
                 transform.ApplyPatternsOp(named_seq.bodyTarget).patterns
             ):
-                gpu.apply_patterns_gpu_unroll_vectors_subgroup_mma(m=1, n=32, k=1)
+                # gpu.apply_patterns_gpu_unroll_vectors_subgroup_mma(m=1, n=64, k=1)
                 vector.apply_patterns_vector_cast_away_vector_leading_one_dim()
+                tensor.apply_patterns_tensor_fold_tensor_subset_ops_into_vector_transfers()
                 transform.apply_patterns_canonicalization()
+            # transform.print_()
 
             # # Lower to broadcast+FMA instructions.
             with ir.InsertionPoint(
@@ -119,13 +166,8 @@ def tile_and_vector_gemm(ctx: ir.Context) -> ir.Module:
                 x86vector.apply_patterns_x86vector_vector_contract_to_fma()
                 x86vector.apply_patterns_x86vector_sink_vector_producer_ops()
                 vector.apply_patterns_vector_flatten_vector_transfer_ops()
-
-            # Cleanup.
-            transform.apply_cse(named_seq.bodyTarget)
-            with ir.InsertionPoint(
-                transform.ApplyPatternsOp(named_seq.bodyTarget).patterns
-            ):
-                transform.apply_patterns_canonicalization()
+            cleanup(named_seq.bodyTarget)
+            # transform.print_()
 
             transform.yield_()
     return schedule
@@ -189,9 +231,12 @@ def pack_gemm(ctx: ir.Context) -> ir.Module:
                     tiled_pack,
                     lower_pad_like_with_insert_slice=False,
                 )
+                fill_unroll = 64
                 _, *loops = structured.TileUsingForOp(
-                    transpose, sizes=[1, 1, 1]
+                    transpose, sizes=[1, 1, 1, fill_unroll]
                 ).results
+                loop.loop_unroll(loops[-1], TILE_SIZE // fill_unroll)
+                # loop.loop_unroll(loops[-2], 2)
                 transform.yield_()
             cleanup(named_seq.bodyTarget)
             # transform.print_()
@@ -242,8 +287,13 @@ def pack_gemm(ctx: ir.Context) -> ir.Module:
             with ir.InsertionPoint(
                 transform.ApplyPatternsOp(named_seq.bodyTarget).patterns
             ):
-                tensor.apply_patterns_tensor_merge_consecutive_insert_extract_slice()
+                vector.apply_patterns_vector_flatten_vector_transfer_ops()
+                tensor.apply_patterns_tensor_fold_tensor_subset_ops_into_vector_transfers()
                 transform.apply_patterns_canonicalization()
+            with ir.InsertionPoint(
+                transform.ApplyPatternsOp(named_seq.bodyTarget).patterns
+            ):
+                vector.apply_patterns_vector_cast_away_vector_leading_one_dim()
             cleanup(named_seq.bodyTarget)
             # transform.print_()
 
