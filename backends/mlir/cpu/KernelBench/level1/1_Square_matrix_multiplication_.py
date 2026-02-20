@@ -231,12 +231,13 @@ def pack_gemm(ctx: ir.Context) -> ir.Module:
                     tiled_pack,
                     lower_pad_like_with_insert_slice=False,
                 )
-                fill_unroll = 64
+                transpose_unroll_m = 8
+                transpose_unroll_n = 64
                 _, *loops = structured.TileUsingForOp(
-                    transpose, sizes=[1, 1, 1, fill_unroll]
+                    transpose, sizes=[1, 1, transpose_unroll_m, transpose_unroll_n]
                 ).results
-                loop.loop_unroll(loops[-1], TILE_SIZE // fill_unroll)
-                # loop.loop_unroll(loops[-2], 2)
+                loop.loop_unroll(loops[-1], TILE_SIZE // transpose_unroll_n)
+                loop.loop_unroll(loops[-2], transpose_unroll_m)
                 transform.yield_()
             cleanup(named_seq.bodyTarget)
             # transform.print_()
@@ -265,6 +266,7 @@ def pack_gemm(ctx: ir.Context) -> ir.Module:
                 ).result
                 structured.TileUsingForOp(copy, sizes=[1])
                 transform.yield_()
+            # transform.print_()
 
             copies = structured.MatchOp.match_op_names(
                 named_seq.bodyTarget, ["linalg.copy"]
