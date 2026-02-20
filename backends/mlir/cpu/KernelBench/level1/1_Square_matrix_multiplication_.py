@@ -237,7 +237,6 @@ def pack_gemm(ctx: ir.Context) -> ir.Module:
                     transpose, sizes=[1, 1, transpose_unroll_m, transpose_unroll_n]
                 ).results
                 loop.loop_unroll(loops[-1], TILE_SIZE // transpose_unroll_n)
-                loop.loop_unroll(loops[-2], transpose_unroll_m)
                 transform.yield_()
             cleanup(named_seq.bodyTarget)
             # transform.print_()
