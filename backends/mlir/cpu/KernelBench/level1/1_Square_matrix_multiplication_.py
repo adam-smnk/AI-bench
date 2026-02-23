@@ -1,10 +1,9 @@
 from mlir import ir
 from mlir.dialects import transform
-from mlir.dialects.transform import gpu
 from mlir.dialects.transform import loop
 from mlir.dialects.transform import structured
-from mlir.dialects.transform import vector
 from mlir.dialects.transform import tensor
+from mlir.dialects.transform import vector
 from mlir.dialects.transform import x86vector
 from mlir.passmanager import PassManager
 import torch
@@ -81,19 +80,21 @@ def tile_and_vector_gemm(ctx: ir.Context) -> ir.Module:
             # Register tiling.
             reg_tile_m = 8
             reg_tile_n = 32
-            reg_tile_k = 2
+            reg_tile_k = 1
             brgemm = structured.MatchOp.match_op_names(
                 named_seq.bodyTarget, [gemm_name]
             ).result
             _, *gemm_loops = structured.TileUsingForOp(
-                brgemm, sizes=[1, reg_tile_m, reg_tile_n, reg_tile_k]
+                brgemm,
+                sizes=[1, reg_tile_m, reg_tile_n, reg_tile_k],
+                interchange=[1, 2, 0, 3],
             ).results
             assert TILE_SIZE % reg_tile_k == 0, "Invalid K reg tiling"
             if TILE_SIZE % reg_tile_n != 0:
                 loop.LoopPeelOp(
                     anytype,
                     anytype,
-                    gemm_loops[2],
+                    gemm_loops[1],
                     peel_front=False,
                     fail_if_already_divisible=False,
                 )
@@ -101,7 +102,7 @@ def tile_and_vector_gemm(ctx: ir.Context) -> ir.Module:
                 loop.LoopPeelOp(
                     anytype,
                     anytype,
-                    gemm_loops[1],
+                    gemm_loops[0],
                     peel_front=False,
                     fail_if_already_divisible=False,
                 )
@@ -232,7 +233,7 @@ def pack_gemm(ctx: ir.Context) -> ir.Module:
                     lower_pad_like_with_insert_slice=False,
                 )
                 transpose_unroll_m = 8
-                transpose_unroll_n = 64
+                transpose_unroll_n = min(64, TILE_SIZE)
                 _, *loops = structured.TileUsingForOp(
                     transpose, sizes=[1, 1, transpose_unroll_m, transpose_unroll_n]
                 ).results
