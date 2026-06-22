@@ -1,6 +1,6 @@
 import functools
 
-from gilbert_d2xy import gilbert_d2xy
+from .gilbert_d2xy import gilbert_d2xy
 import torch
 import triton
 import triton.language as tl

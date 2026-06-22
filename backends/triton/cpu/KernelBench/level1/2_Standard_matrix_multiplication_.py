@@ -4,7 +4,7 @@
 # Expectation: Correctness-first, performance not representative
 
 
-from sfc_matmul import sfc_matmul
+from ...utils.sfc_matmul import sfc_matmul
 import torch
 import torch.nn as nn
 
