@@ -47,6 +47,44 @@ _INHERIT = str(InInputKey.INHERIT)
 _KNOWN_VARIANT_CATEGORIES = ("ci", "simple-cpu", "bench-cpu", "bench-gpu")
 
 
+class _DictLikeModel(BaseModel):
+    """Base class adding dict-style access ('model[key]', 'key in model',
+    'model.get(key)') on top of a pydantic model.
+
+    The rest of `ai_bench` (`specs.py`'s `get_inputs`/`get_variant_*`/... and
+    `kernel_runner.py`) consumes specs as plain dicts keyed by the
+    `SpecKey`/`InKey`/`VKey` StrEnums, whose values match these models'
+    field names 1:1. Inheriting from this class keeps that existing,
+    unchanged dict-based API working transparently against the validated
+    pydantic models, instead of requiring every call site to be rewritten
+    for attribute access.
+
+    Containment/`.get()` use `model_fields_set` (which fields were actually
+    present in the source data) rather than a plain `hasattr`, so an
+    omitted optional field (e.g. no 'rtol' in the YAML) is correctly
+    treated as absent - matching real `dict.get()`/`in` semantics - even
+    though the pydantic attribute always exists (defaulting to `None`).
+    """
+
+    def __contains__(self, key: object) -> bool:
+        key = str(key)
+        if key in self.model_fields_set:
+            return True
+        return key in (self.__pydantic_extra__ or {})
+
+    def __getitem__(self, key: object) -> Any:
+        key = str(key)
+        if key not in self:
+            raise KeyError(key)
+        return getattr(self, key)
+
+    def get(self, key: object, default: Any = None) -> Any:
+        key = str(key)
+        if key not in self:
+            return default
+        return getattr(self, key)
+
+
 def _flow_array_json_schema(json_schema: dict[str, Any]) -> None:
     """Hint editors to complete this array property as an empty flow-style
     sequence ('key: []') instead of a multi-line block sequence ('key:\n  -
@@ -191,7 +229,7 @@ def _no_required_json_schema(json_schema: dict[str, Any]) -> None:
     json_schema.pop("required", None)
 
 
-class InitEntry(BaseModel):
+class InitEntry(_DictLikeModel):
     """Schema for a single entry of the top-level 'inits' list.
 
     Mirrors the fields read by `ai_bench.harness.core.get_inits`.
@@ -208,7 +246,7 @@ class InitEntry(BaseModel):
     )
 
 
-class InputSpec(BaseModel):
+class InputSpec(_DictLikeModel):
     """Schema for a single entry of the top-level 'inputs' mapping.
 
     Mirrors the fields read by `ai_bench.harness.core.get_inputs`.
@@ -289,7 +327,7 @@ def _variant_dtype_json_schema(json_schema: dict[str, Any]) -> None:
     json_schema["examples"] = [*_basic_torch_dtype_names()]
 
 
-class VariantEntry(BaseModel):
+class VariantEntry(_DictLikeModel):
     """Schema for a single entry of a variant category list (e.g. 'ci', 'bench-cpu').
 
     Mirrors the fields read via `VKey` by the various `get_*` helpers.
@@ -304,7 +342,7 @@ class VariantEntry(BaseModel):
         json_schema_extra=_flow_array_json_schema,
     )
     dtype: str | None = Field(
-        ...,
+        default=None,
         description="Torch dtype name applied to the model/variant.",
         json_schema_extra=_variant_dtype_json_schema,
     )
@@ -366,7 +404,7 @@ class VariantEntry(BaseModel):
         return value
 
 
-class KernelSpec(BaseModel):
+class KernelSpec(_DictLikeModel):
     """Schema for a KernelBench-style problem spec YAML file.
 
     The 'inputs' and 'inits' keys are validated explicitly. Every other

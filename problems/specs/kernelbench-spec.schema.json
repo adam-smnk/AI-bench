@@ -186,6 +186,7 @@
               "type": "null"
             }
           ],
+          "default": null,
           "description": "Torch dtype name applied to the model/variant.",
           "examples": [
             "bfloat16",
@@ -330,7 +331,6 @@
       },
       "required": [
         "params",
-        "dtype",
         "dims"
       ],
       "title": "VariantEntry",

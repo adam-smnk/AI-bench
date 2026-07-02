@@ -192,7 +192,6 @@ class KernelBenchRunner(KernelRunner):
         self, kernel_path: Path, spec_path: Path
     ) -> list[KernelStats] | None:
         """Compile and run a native (C++) kernel via subprocess."""
-        import yaml
 
         from ai_bench.sycl.compiler import SYCLCompiler
 
@@ -200,8 +199,7 @@ class KernelBenchRunner(KernelRunner):
             self.logger.debug(f"Missing native kernel: {kernel_path}")
             return None
 
-        with open(spec_path) as f:
-            spec = yaml.safe_load(f)
+        spec = self.load_spec(spec_path)
 
         if self.spec_type not in spec:
             return None
