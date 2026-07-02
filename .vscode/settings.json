@@ -1,0 +1,13 @@
+// The setting cannot be applied directly to a (multi-root) workspace.
+// In that case, copy the config to the workspace's "NAME.code-workspace" file
+// under "settings" such as:
+//   "settings": {
+//     PASTE SETTINGS HERE
+//   }
+{
+  "yaml.schemas": {
+    "./problems/specs/kernelbench-spec.schema.json": [
+      "problems/specs/KernelBench/**/*.yaml"
+    ]
+  }
+}

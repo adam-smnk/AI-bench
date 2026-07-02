@@ -1,0 +1,309 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "KernelBench problem spec",
+  "description": "Schema for KernelBench-style problem spec YAML files (see ai_bench.harness.core.schema.KernelSpec). Generated from the pydantic models - do not edit by hand; regenerate with 'uv run python -m ai_bench.harness.core.schema <output-path>'.",
+  "type": "object",
+  "required": [
+    "inputs"
+  ],
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Optional, informational problem name."
+    },
+    "description": {
+      "type": "string",
+      "description": "Optional, informational problem description."
+    },
+    "inputs": {
+      "type": "object",
+      "minProperties": 1,
+      "description": "Mapping of input name -> input spec.",
+      "additionalProperties": {
+        "$ref": "#/$defs/InputSpec"
+      }
+    },
+    "inits": {
+      "type": "array",
+      "description": "Dimension names passed positionally to the kernel's constructor.",
+      "items": {
+        "$ref": "#/$defs/InitEntry"
+      }
+    },
+    "ci": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/VariantEntry"
+      }
+    },
+    "simple-cpu": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/VariantEntry"
+      }
+    },
+    "bench-cpu": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/VariantEntry"
+      }
+    },
+    "bench-gpu": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/VariantEntry"
+      }
+    }
+  },
+  "additionalProperties": {
+    "type": "array",
+    "items": {
+      "$ref": "#/$defs/VariantEntry"
+    }
+  },
+  "$defs": {
+    "InputSpec": {
+      "additionalProperties": false,
+      "description": "Schema for a single entry of the top-level 'inputs' mapping.\n\nMirrors the fields read by `ai_bench.harness.core.get_inputs`.",
+      "properties": {
+        "shape": {
+          "default": [],
+          "description": "Dimension names composing the input's shape.",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Shape",
+          "type": "array"
+        },
+        "dtype": {
+          "description": "Torch dtype name (e.g. 'float32'), or 'inherit' to reuse the variant's dtype.",
+          "title": "Dtype",
+          "type": "string"
+        },
+        "range": {
+          "anyOf": [
+            {
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "string"
+                  }
+                ]
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "[low, high) value range for integer/bool inputs. Values may be numbers or dimension names.",
+          "title": "Range"
+        },
+        "inits": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Initialization transforms (see InInitKey) applied in order.",
+          "title": "Inits"
+        }
+      },
+      "required": [
+        "shape",
+        "dtype"
+      ],
+      "title": "InputSpec",
+      "type": "object"
+    },
+    "InitEntry": {
+      "additionalProperties": false,
+      "description": "Schema for a single entry of the top-level 'inits' list.\n\nMirrors the fields read by `ai_bench.harness.core.get_inits`.",
+      "properties": {
+        "dim": {
+          "description": "Dimension name (from a variant's 'dims') to pass to the kernel's constructor, in declaration order.",
+          "title": "Dim",
+          "type": "string"
+        }
+      },
+      "required": [
+        "dim"
+      ],
+      "title": "InitEntry",
+      "type": "object"
+    },
+    "VariantEntry": {
+      "additionalProperties": false,
+      "description": "Schema for a single entry of a variant category list (e.g. 'ci', 'bench-cpu').\n\nMirrors the fields read via `VKey` by the various `get_*` helpers.",
+      "properties": {
+        "params": {
+          "default": [],
+          "description": "Names of declared 'inputs' to construct and feed to this variant.",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Params",
+          "type": "array"
+        },
+        "dtype": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Torch dtype name applied to the model/variant.",
+          "title": "Dtype"
+        },
+        "memory_format": {
+          "anyOf": [
+            {
+              "enum": [
+                "channels_last",
+                "channels_last_3d"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Memory Format"
+        },
+        "dims": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    }
+                  ]
+                },
+                "type": "array"
+              }
+            ]
+          },
+          "description": "Dimension name -> concrete value(s) for this variant.",
+          "title": "Dims",
+          "type": "object"
+        },
+        "flop": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Number of FLOP, or a formula over 'dims'.",
+          "title": "Flop"
+        },
+        "mem_bytes": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Number of memory access bytes, or a formula over 'dims'.",
+          "title": "Mem Bytes"
+        },
+        "rtol": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "description": "Numeric string (e.g. 'inf', '-inf', 'nan').",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Relative tolerance override.",
+          "title": "Rtol"
+        },
+        "atol": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "description": "Numeric string (e.g. 'inf', '-inf', 'nan').",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Absolute tolerance override.",
+          "title": "Atol"
+        }
+      },
+      "required": [
+        "params"
+      ],
+      "title": "VariantEntry",
+      "type": "object"
+    }
+  }
+}

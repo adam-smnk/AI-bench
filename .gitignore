@@ -5,3 +5,9 @@ uv.lock
 .env*.local
 tests/output
 /build/
+
+# Visual Studio Code files
+.vs
+/.vscode/*
+!/.vscode/extensions.json
+!/.vscode/settings.json
