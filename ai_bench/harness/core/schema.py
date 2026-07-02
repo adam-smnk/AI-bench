@@ -20,7 +20,6 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
-from typing import Literal
 from typing import Union
 
 from pydantic import BaseModel
@@ -73,6 +72,43 @@ def _check_torch_dtype(value: str) -> str:
     return value
 
 
+def _check_torch_memory_format(value: str) -> str:
+    """Validate that a string names a real torch memory format.
+    Args:
+        value: Candidate memory format name
+    Returns:
+        The validated memory format name
+    """
+    memory_format = getattr(torch, value, None)
+    if not isinstance(memory_format, torch.memory_format):
+        raise ValueError(f"Unknown torch memory_format: '{value}'")
+    return value
+
+
+def _known_torch_memory_format_names() -> list[str]:
+    """List every real torch memory_format attribute name (e.g.
+    'channels_last', 'contiguous_format', ...).
+    Returns:
+        Sorted torch memory_format names
+    """
+    return sorted(
+        name
+        for name in dir(torch)
+        if isinstance(getattr(torch, name, None), torch.memory_format)
+    )
+
+
+def _memory_format_json_schema(json_schema: dict[str, Any]) -> None:
+    """Offer every real torch memory format name as completion examples for
+    'memory_format'.
+
+    Uses 'examples' (not 'enum') so new torch memory formats don't require a
+    schema update, matching `_check_torch_memory_format`'s dynamic
+    (`getattr(torch, ...)`) check.
+    """
+    json_schema["examples"] = _known_torch_memory_format_names()
+
+
 def _known_torch_dtype_names() -> list[str]:
     """List every real torch dtype attribute name (e.g. 'float32', 'int64', ...).
     Returns:
@@ -119,8 +155,7 @@ def _basic_torch_dtype_names() -> list[str]:
 
 
 def _input_dtype_json_schema(json_schema: dict[str, Any]) -> None:
-    """Offer 'inherit' plus basic/common torch dtype names as completion
-    examples.
+    """Inputs entry 'dtype' field suggestions.
 
     Uses 'examples' (not 'enum') so this only affects editor suggestions - it
     doesn't restrict validation to this exact list, matching
@@ -227,6 +262,16 @@ def _tolerance_json_schema(json_schema: dict[str, Any]) -> None:
     ]
 
 
+def _variant_dtype_json_schema(json_schema: dict[str, Any]) -> None:
+    """Variant entry 'dtype' field suggestions.
+
+    Uses 'examples' (not 'enum') so this only affects editor suggestions - it
+    doesn't restrict validation to this exact list, matching
+    `_check_torch_dtype`'s dynamic (`getattr(torch, ...)`) check.
+    """
+    json_schema["examples"] = [*_basic_torch_dtype_names()]
+
+
 class VariantEntry(BaseModel):
     """Schema for a single entry of a variant category list (e.g. 'ci', 'bench-cpu').
 
@@ -242,9 +287,16 @@ class VariantEntry(BaseModel):
         json_schema_extra=_flow_array_json_schema,
     )
     dtype: str | None = Field(
-        default=None, description="Torch dtype name applied to the model/variant."
+        ...,
+        description="Torch dtype name applied to the model/variant.",
+        json_schema_extra=_variant_dtype_json_schema,
     )
-    memory_format: Literal["channels_last", "channels_last_3d"] | None = None
+    memory_format: str | None = Field(
+        default=None,
+        description="Torch memory format name (e.g. 'channels_last') applied "
+        "to the model/inputs.",
+        json_schema_extra=_memory_format_json_schema,
+    )
     dims: dict[str, DimValue] = Field(
         default_factory=dict,
         description="Dimension name -> concrete value(s) for this variant.",
@@ -273,6 +325,13 @@ class VariantEntry(BaseModel):
         if value is None:
             return value
         return _check_torch_dtype(value)
+
+    @field_validator("memory_format")
+    @classmethod
+    def _validate_memory_format(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        return _check_torch_memory_format(value)
 
     @field_validator("rtol", "atol", mode="before")
     @classmethod

@@ -84,9 +84,12 @@
             "inherit",
             "bfloat16",
             "bool",
+            "double",
+            "float",
             "float16",
             "float32",
             "float64",
+            "int",
             "int16",
             "int32",
             "int64",
@@ -186,17 +189,30 @@
               "type": "null"
             }
           ],
-          "default": null,
           "description": "Torch dtype name applied to the model/variant.",
+          "examples": [
+            "bfloat16",
+            "bool",
+            "double",
+            "float",
+            "float16",
+            "float32",
+            "float64",
+            "int",
+            "int16",
+            "int32",
+            "int64",
+            "int8",
+            "uint16",
+            "uint32",
+            "uint64",
+            "uint8"
+          ],
           "title": "Dtype"
         },
         "memory_format": {
           "anyOf": [
             {
-              "enum": [
-                "channels_last",
-                "channels_last_3d"
-              ],
               "type": "string"
             },
             {
@@ -204,6 +220,14 @@
             }
           ],
           "default": null,
+          "description": "Torch memory format name (e.g. 'channels_last') applied to the model/inputs.",
+          "examples": [
+            "channels_last",
+            "channels_last_3d",
+            "contiguous_format",
+            "legacy_contiguous_format",
+            "preserve_format"
+          ],
           "title": "Memory Format"
         },
         "dims": {
@@ -314,7 +338,8 @@
         }
       },
       "required": [
-        "params"
+        "params",
+        "dtype"
       ],
       "title": "VariantEntry",
       "type": "object"
