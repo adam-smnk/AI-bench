@@ -49,7 +49,8 @@ _KNOWN_VARIANT_CATEGORIES = ("ci", "simple-cpu", "bench-cpu", "bench-gpu")
 
 class _DictLikeModel(BaseModel):
     """Base class adding dict-style access ('model[key]', 'key in model',
-    'model.get(key)') on top of a pydantic model.
+    'model.get(key)', 'for k in model', '.keys()'/'.items()'/'.values()') on
+    top of a pydantic model.
 
     The rest of `ai_bench` (`specs.py`'s `get_inputs`/`get_variant_*`/... and
     `kernel_runner.py`) consumes specs as plain dicts keyed by the
@@ -59,18 +60,22 @@ class _DictLikeModel(BaseModel):
     pydantic models, instead of requiring every call site to be rewritten
     for attribute access.
 
-    Containment/`.get()` use `model_fields_set` (which fields were actually
-    present in the source data) rather than a plain `hasattr`, so an
-    omitted optional field (e.g. no 'rtol' in the YAML) is correctly
-    treated as absent - matching real `dict.get()`/`in` semantics - even
-    though the pydantic attribute always exists (defaulting to `None`).
+    All dict-style views (containment, `.get()`, iteration, `.keys()`,
+    `.items()`, `.values()`) are scoped to `model_fields_set` (which fields
+    were actually present in the source data, akin to
+    `model_dump(exclude_unset=True)`) rather than every declared field, so
+    an omitted optional field (e.g. no 'rtol' in the YAML) is correctly
+    treated as absent - matching real dict semantics - even though the
+    pydantic attribute always exists (defaulting to `None`).
     """
 
+    def _dict_like_keys(self) -> list[str]:
+        keys = list(self.model_fields_set)
+        keys.extend(k for k in (self.__pydantic_extra__ or {}) if k not in keys)
+        return keys
+
     def __contains__(self, key: object) -> bool:
-        key = str(key)
-        if key in self.model_fields_set:
-            return True
-        return key in (self.__pydantic_extra__ or {})
+        return str(key) in self._dict_like_keys()
 
     def __getitem__(self, key: object) -> Any:
         key = str(key)
@@ -83,6 +88,43 @@ class _DictLikeModel(BaseModel):
         if key not in self:
             return default
         return getattr(self, key)
+
+    def __iter__(self):
+        return iter(self._dict_like_keys())
+
+    def keys(self) -> list[str]:
+        return self._dict_like_keys()
+
+    def items(self) -> list[tuple[str, Any]]:
+        return [(key, getattr(self, key)) for key in self._dict_like_keys()]
+
+    def values(self) -> list[Any]:
+        return [getattr(self, key) for key in self._dict_like_keys()]
+
+    def __repr_args__(self):
+        # Pydantic's default __repr__/__str__ (used e.g. by f"{variant}" in
+        # log messages) shows every declared field, including unset ones
+        # defaulting to None. Scope it to the same set of fields as the
+        # dict-style views above for consistency.
+        return [(key, getattr(self, key)) for key in self._dict_like_keys()]
+
+    def __getattr__(self, name: str) -> Any:
+        # Pydantic already exposes 'extra' fields via attribute access, but
+        # only under their literal (e.g. hyphenated) key - 'spec.ci' works
+        # since "ci" is a valid identifier, but variant categories like
+        # 'bench-gpu'/'bench-cpu'/'simple-cpu' aren't, so 'spec.bench_gpu'
+        # would otherwise fail. Fall back to trying the hyphenated spelling
+        # so both attribute styles work.
+        try:
+            return super().__getattr__(name)
+        except AttributeError:
+            pass
+        alt_name = name.replace("_", "-")
+        if alt_name != name and alt_name in (self.__pydantic_extra__ or {}):
+            return self.__pydantic_extra__[alt_name]
+        raise AttributeError(
+            f"{type(self).__name__!r} object has no attribute {name!r}"
+        )
 
 
 def _flow_array_json_schema(json_schema: dict[str, Any]) -> None:
