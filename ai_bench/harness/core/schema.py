@@ -59,6 +59,20 @@ def _flow_array_json_schema(json_schema: dict[str, Any]) -> None:
     json_schema["default"] = []
 
 
+def _drop_null_default_json_schema(json_schema: dict[str, Any]) -> None:
+    """Drop a `None`/`null` 'default' from an optional field's exported schema.
+
+    Pydantic sets `"default": null` for `Optional[X] = None` fields. Editors
+    treat an explicit `null` default as a real value and insert it literally
+    (e.g. accepting 'flop' + Enter produces 'flop: null' instead of leaving
+    the value empty for the user to fill in). Removing it only affects the
+    editor-facing schema - the field's Python default/Optional-ness is
+    unchanged, still `None` when omitted.
+    """
+    if json_schema.get("default", False) is None:
+        json_schema.pop("default", None)
+
+
 def _check_torch_dtype(value: str) -> str:
     """Validate that a string names a real torch dtype.
     Args:
@@ -107,6 +121,7 @@ def _memory_format_json_schema(json_schema: dict[str, Any]) -> None:
     (`getattr(torch, ...)`) check.
     """
     json_schema["examples"] = _known_torch_memory_format_names()
+    _drop_null_default_json_schema(json_schema)
 
 
 def _known_torch_dtype_names() -> list[str]:
@@ -126,12 +141,11 @@ def _known_torch_dtype_names() -> list[str]:
 # Deliberately excludes quantized types (qint8, quint4x2, ...), complex types,
 # float8 variants, and sub-byte/experimental types (int1-int7, bits* etc.).
 _BASIC_DTYPE_CANDIDATES = (
-    "bool",
-    "double",
     "float",
     "int",
-    "float16",
+    "bool",
     "bfloat16",
+    "float16",
     "float32",
     "float64",
     "int8",
@@ -148,7 +162,7 @@ _BASIC_DTYPE_CANDIDATES = (
 def _basic_torch_dtype_names() -> list[str]:
     """List basic/common torch dtype names available in the installed torch.
     Returns:
-        Sorted subset of suggested dtypes
+        Subset of suggested dtypes
     """
     known = set(_known_torch_dtype_names())
     return sorted(name for name in _BASIC_DTYPE_CANDIDATES if name in known)
@@ -220,10 +234,12 @@ class InputSpec(BaseModel):
         max_length=2,
         description="[low, high) value range for integer/bool inputs. Values "
         "may be numbers or dimension names.",
+        json_schema_extra=_drop_null_default_json_schema,
     )
     inits: list[str] | None = Field(
         default=None,
         description="Initialization transforms (see InInitKey) applied in order.",
+        json_schema_extra=_drop_null_default_json_schema,
     )
 
     @field_validator("dtype")
@@ -260,6 +276,7 @@ def _tolerance_json_schema(json_schema: dict[str, Any]) -> None:
         },
         {"type": "null"},
     ]
+    _drop_null_default_json_schema(json_schema)
 
 
 def _variant_dtype_json_schema(json_schema: dict[str, Any]) -> None:
@@ -302,11 +319,14 @@ class VariantEntry(BaseModel):
         description="Dimension name -> concrete value(s) for this variant.",
     )
     flop: FormulaValue | None = Field(
-        default=None, description="Number of FLOP, or a formula over 'dims'."
+        default=None,
+        description="Number of FLOP, or a formula over 'dims'.",
+        json_schema_extra=_drop_null_default_json_schema,
     )
     mem_bytes: FormulaValue | None = Field(
         default=None,
         description="Number of memory access bytes, or a formula over 'dims'.",
+        json_schema_extra=_drop_null_default_json_schema,
     )
     rtol: float | None = Field(
         default=None,

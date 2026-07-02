@@ -84,7 +84,6 @@
             "inherit",
             "bfloat16",
             "bool",
-            "double",
             "float",
             "float16",
             "float32",
@@ -126,7 +125,6 @@
               "type": "null"
             }
           ],
-          "default": null,
           "description": "[low, high) value range for integer/bool inputs. Values may be numbers or dimension names.",
           "title": "Range"
         },
@@ -142,7 +140,6 @@
               "type": "null"
             }
           ],
-          "default": null,
           "description": "Initialization transforms (see InInitKey) applied in order.",
           "title": "Inits"
         }
@@ -193,7 +190,6 @@
           "examples": [
             "bfloat16",
             "bool",
-            "double",
             "float",
             "float16",
             "float32",
@@ -219,7 +215,6 @@
               "type": "null"
             }
           ],
-          "default": null,
           "description": "Torch memory format name (e.g. 'channels_last') applied to the model/inputs.",
           "examples": [
             "channels_last",
@@ -279,7 +274,6 @@
               "type": "null"
             }
           ],
-          "default": null,
           "description": "Number of FLOP, or a formula over 'dims'.",
           "title": "Flop"
         },
@@ -298,7 +292,6 @@
               "type": "null"
             }
           ],
-          "default": null,
           "description": "Number of memory access bytes, or a formula over 'dims'.",
           "title": "Mem Bytes"
         },
@@ -315,7 +308,6 @@
               "type": "null"
             }
           ],
-          "default": null,
           "description": "Relative tolerance override.",
           "title": "Rtol"
         },
@@ -332,7 +324,6 @@
               "type": "null"
             }
           ],
-          "default": null,
           "description": "Absolute tolerance override.",
           "title": "Atol"
         }
