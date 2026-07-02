@@ -1,3 +1,4 @@
+from .schema import load_spec_file
 from .specs import Backend
 from .specs import InInitKey
 from .specs import InInputKey
@@ -46,4 +47,5 @@ __all__ = [
     "input_range",
     "input_shape",
     "input_torch_dtype",
+    "load_spec_file",
 ]

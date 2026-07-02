@@ -10,7 +10,6 @@ from . import config
 from ai_bench import utils as ai_utils
 from ai_bench.harness import core as ai_hc
 from ai_bench.harness import testing
-from ai_bench.harness.core import schema as ai_schema
 from ai_bench.utils.logger import setup_logger
 
 
@@ -174,7 +173,7 @@ class KernelRunner:
         Returns:
             Problem spec descriptor
         """
-        return ai_schema.load_spec_file(spec_path)
+        return ai_hc.load_spec_file(spec_path)
 
     def get_spec_variants(self, spec: dict) -> list[dict]:
         """Get problem variants for current spec type.

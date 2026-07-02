@@ -208,10 +208,8 @@ class TestYamlRoundTrip:
         with open(spec_path, "w") as f:
             yaml.dump(spec, f, default_flow_style=False)
 
-        with open(spec_path) as f:
-            loaded = yaml.safe_load(f)
-
-        variants = loaded["bench-gpu"]
+        spec = ai_hc.load_spec_file(spec_path)
+        variants = spec["bench-gpu"]
 
         # float32 variant
         assert ai_hc.get_rtol(variants[0]) == 1e-3
@@ -243,10 +241,8 @@ class TestYamlRoundTrip:
         with open(spec_path, "w") as f:
             yaml.dump(spec, f, default_flow_style=False)
 
-        with open(spec_path) as f:
-            loaded = yaml.safe_load(f)
-
-        variant = loaded["bench-gpu"][0]
+        spec = ai_hc.load_spec_file(spec_path)
+        variant = spec["bench-gpu"][0]
         assert ai_hc.get_rtol(variant) == 1e-2
         assert ai_hc.get_atol(variant) == 1e-5
 
@@ -271,10 +267,8 @@ class TestYamlRoundTrip:
         with open(spec_path, "w") as f:
             yaml.dump(spec, f, default_flow_style=False)
 
-        with open(spec_path) as f:
-            loaded = yaml.safe_load(f)
-
-        variant = loaded["ci"][0]
+        spec = ai_hc.load_spec_file(spec_path)
+        variant = spec["ci"][0]
         assert ai_hc.get_rtol(variant) == 1e-4
         assert ai_hc.get_atol(variant) == 1e-5  # default
 
