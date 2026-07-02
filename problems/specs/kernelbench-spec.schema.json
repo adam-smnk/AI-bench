@@ -330,7 +330,8 @@
       },
       "required": [
         "params",
-        "dtype"
+        "dtype",
+        "dims"
       ],
       "title": "VariantEntry",
       "type": "object"

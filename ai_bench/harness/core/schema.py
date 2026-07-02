@@ -315,7 +315,7 @@ class VariantEntry(BaseModel):
         json_schema_extra=_memory_format_json_schema,
     )
     dims: dict[str, DimValue] = Field(
-        default_factory=dict,
+        ...,
         description="Dimension name -> concrete value(s) for this variant.",
     )
     flop: FormulaValue | None = Field(
