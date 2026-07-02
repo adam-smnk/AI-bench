@@ -25,6 +25,7 @@
     },
     "inits": {
       "type": "array",
+      "default": [],
       "description": "Dimension names passed positionally to the kernel's constructor.",
       "items": {
         "$ref": "#/$defs/InitEntry"
@@ -77,7 +78,24 @@
           "type": "array"
         },
         "dtype": {
+          "default": "inherit",
           "description": "Torch dtype name (e.g. 'float32'), or 'inherit' to reuse the variant's dtype.",
+          "examples": [
+            "inherit",
+            "bfloat16",
+            "bool",
+            "float16",
+            "float32",
+            "float64",
+            "int16",
+            "int32",
+            "int64",
+            "int8",
+            "uint16",
+            "uint32",
+            "uint64",
+            "uint8"
+          ],
           "title": "Dtype",
           "type": "string"
         },
@@ -127,8 +145,7 @@
         }
       },
       "required": [
-        "shape",
-        "dtype"
+        "shape"
       ],
       "title": "InputSpec",
       "type": "object"
@@ -143,9 +160,6 @@
           "type": "string"
         }
       },
-      "required": [
-        "dim"
-      ],
       "title": "InitEntry",
       "type": "object"
     },

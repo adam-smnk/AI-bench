@@ -73,13 +73,84 @@ def _check_torch_dtype(value: str) -> str:
     return value
 
 
+def _known_torch_dtype_names() -> list[str]:
+    """List every real torch dtype attribute name (e.g. 'float32', 'int64', ...).
+    Returns:
+        Sorted torch dtype names
+    """
+    return sorted(
+        name
+        for name in dir(torch)
+        if isinstance(getattr(torch, name, None), torch.dtype)
+    )
+
+
+# Basic/common torch dtypes: all floating point types, power-of-two-width
+# integers (signed/unsigned), and bool.
+# Deliberately excludes quantized types (qint8, quint4x2, ...), complex types,
+# float8 variants, and sub-byte/experimental types (int1-int7, bits* etc.).
+_BASIC_DTYPE_CANDIDATES = (
+    "bool",
+    "double",
+    "float",
+    "int",
+    "float16",
+    "bfloat16",
+    "float32",
+    "float64",
+    "int8",
+    "int16",
+    "int32",
+    "int64",
+    "uint8",
+    "uint16",
+    "uint32",
+    "uint64",
+)
+
+
+def _basic_torch_dtype_names() -> list[str]:
+    """List basic/common torch dtype names available in the installed torch.
+    Returns:
+        Sorted subset of suggested dtypes
+    """
+    known = set(_known_torch_dtype_names())
+    return sorted(name for name in _BASIC_DTYPE_CANDIDATES if name in known)
+
+
+def _input_dtype_json_schema(json_schema: dict[str, Any]) -> None:
+    """Offer 'inherit' plus basic/common torch dtype names as completion
+    examples.
+
+    Uses 'examples' (not 'enum') so this only affects editor suggestions - it
+    doesn't restrict validation to this exact list, matching
+    `_check_torch_dtype`'s dynamic (`getattr(torch, ...)`) check.
+    """
+    json_schema["examples"] = [_INHERIT, *_basic_torch_dtype_names()]
+
+
+def _no_required_json_schema(json_schema: dict[str, Any]) -> None:
+    """Drop the 'required' list from a model's exported JSON schema.
+
+    Editors auto-fill required object fields as soon as a new array item is
+    started (e.g. accepting a new 'inits' list entry immediately inserts
+    'dim: '). 'inits' is legitimately empty or absent in most real specs, so
+    this keeps that noise out of the editor-facing schema. Runtime
+    validation via pydantic (`parse_spec`/`load_spec_file`) still requires
+    the field regardless - only the JSON schema's hinting is relaxed.
+    """
+    json_schema.pop("required", None)
+
+
 class InitEntry(BaseModel):
     """Schema for a single entry of the top-level 'inits' list.
 
     Mirrors the fields read by `ai_bench.harness.core.get_inits`.
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(
+        extra="forbid", json_schema_extra=_no_required_json_schema
+    )
 
     dim: str = Field(
         ...,
@@ -103,9 +174,10 @@ class InputSpec(BaseModel):
         json_schema_extra=_flow_array_json_schema,
     )
     dtype: str = Field(
-        ...,
+        default=_INHERIT,
         description="Torch dtype name (e.g. 'float32'), or 'inherit' to reuse "
         "the variant's dtype.",
+        json_schema_extra=_input_dtype_json_schema,
     )
     range: list[Union[int, float, str]] | None = Field(
         default=None,
@@ -381,6 +453,7 @@ def generate_json_schema() -> dict[str, Any]:
             },
             "inits": {
                 "type": "array",
+                "default": [],
                 "description": (
                     "Dimension names passed positionally to the kernel's constructor."
                 ),
