@@ -13,11 +13,12 @@ Environment variables:
 
 from dataclasses import dataclass
 import logging
-import os
 from pathlib import Path
 import re
 import subprocess
 import tempfile
+
+from ai_bench.config.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -45,20 +46,20 @@ class SYCLCompiler:
         include_dirs: list[str] | None = None,
         target_device: str | None = None,
     ):
-        self.compiler = compiler or os.environ.get("AIBENCH_SYCL_COMPILER", "icpx")
-        self.target_device = target_device or os.environ.get("AIBENCH_SYCL_TARGET", "")
+        settings = get_settings()
+        self.compiler = compiler or settings.sycl_compiler
+        self.target_device = target_device or settings.sycl_target
 
         if include_dirs is not None:
             self.include_dirs = include_dirs
         else:
-            env_include = os.environ.get("AIBENCH_SYCL_INCLUDE", "")
-            self.include_dirs = [d for d in env_include.split(":") if d]
+            self.include_dirs = list(settings.sycl_include_dirs)
 
         if flags is not None:
             self.flags = flags
         else:
-            env_flags = os.environ.get("AIBENCH_SYCL_FLAGS", "")
-            self.flags = env_flags.split() if env_flags else list(self._DEFAULT_FLAGS)
+            env_flags = settings.sycl_flag_list
+            self.flags = env_flags if env_flags else list(self._DEFAULT_FLAGS)
 
         self._build_dir = Path(tempfile.mkdtemp(prefix="aibench_sycl_"))
         self.last_compile_error: str = ""

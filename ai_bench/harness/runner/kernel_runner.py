@@ -10,6 +10,7 @@ import yaml
 
 from . import config
 from ai_bench import utils as ai_utils
+from ai_bench.config.settings import get_settings
 from ai_bench.harness import core as ai_hc
 from ai_bench.harness import testing
 from ai_bench.utils.logger import setup_logger
@@ -79,13 +80,12 @@ class KernelRunner:
 
         self.spec_type = spec_type
         self.device = device if device else torch.device("cpu")
+        settings = get_settings()
         self.min_cache_nuke_mib = 0
         if self.is_cpu():
             self.warmup = 5
             self.rep = 20
-            self.min_cache_nuke_mib = int(
-                os.environ.get("AIBENCH_CPU_MIN_CACHE_NUKE_MIB", "0")
-            )
+            self.min_cache_nuke_mib = settings.cpu_min_cache_nuke_mib
         elif self.is_gpu():
             self.warmup = 200
             self.rep = 100
@@ -93,10 +93,10 @@ class KernelRunner:
             self.warmup = 25
             self.rep = 100
 
-        if "AIBENCH_WARMUP" in os.environ:
-            self.warmup = int(os.environ["AIBENCH_WARMUP"])
-        if "AIBENCH_REP" in os.environ:
-            self.rep = int(os.environ["AIBENCH_REP"])
+        if settings.warmup is not None:
+            self.warmup = settings.warmup
+        if settings.rep is not None:
+            self.rep = settings.rep
 
         # Configure Triton backend.
         #

@@ -4,21 +4,26 @@ When used as a library, paths must be configured via configure() or environment 
 When used as CLI from project root, paths are auto-detected.
 """
 
-import os
 from pathlib import Path
 from typing import Callable
 
 from dotenv import load_dotenv
 
-# Global path configuration
-_specs_dir: Path | None = None
-_kernels_dir: Path | None = None
-_triton_kernels_dir: Path | None = None
-_helion_kernels_dir: Path | None = None
-_mlir_kernels_dir: Path | None = None
-_gluon_kernels_dir: Path | None = None
-_sycl_kernels_dir: Path | None = None
+from ai_bench.config import settings
+
+# Whether a .env file has been loaded into the process.
 _env_loaded: bool = False
+
+# Settings fields that hold path configuration.
+_PATH_SETTINGS = (
+    "specs_dir",
+    "kernels_dir",
+    "triton_kernels_dir",
+    "helion_kernels_dir",
+    "mlir_kernels_dir",
+    "gluon_kernels_dir",
+    "sycl_kernels_dir",
+)
 
 
 class ConfigurationError(Exception):
@@ -49,11 +54,11 @@ def load_env(env_path: Path | str | None = None, override: bool = False) -> bool
         >>> ai_bench.load_env(override=True)  # Override existing vars
     """
     global _env_loaded
-
     if env_path is not None:
         path = Path(env_path)
         if path.is_file():
             load_dotenv(path, override=override)
+            settings.reset_settings()
             _env_loaded = True
             return True
         return False
@@ -67,6 +72,7 @@ def load_env(env_path: Path | str | None = None, override: bool = False) -> bool
     for path in search_paths:
         if path.is_file():
             load_dotenv(path, override=override)
+            settings.reset_settings()
             _env_loaded = True
             return True
 
@@ -111,71 +117,48 @@ def configure(
         ...     kernels_dir="/path/to/kernels",
         ... )
     """
-    global \
-        _specs_dir, \
-        _kernels_dir, \
-        _triton_kernels_dir, \
-        _helion_kernels_dir, \
-        _mlir_kernels_dir, \
-        _gluon_kernels_dir, \
-        _sycl_kernels_dir
-
-    if specs_dir is not None:
-        _specs_dir = Path(specs_dir)
-    if kernels_dir is not None:
-        _kernels_dir = Path(kernels_dir)
-    if triton_kernels_dir is not None:
-        _triton_kernels_dir = Path(triton_kernels_dir)
-    if helion_kernels_dir is not None:
-        _helion_kernels_dir = Path(helion_kernels_dir)
-    if mlir_kernels_dir is not None:
-        _mlir_kernels_dir = Path(mlir_kernels_dir)
-    if gluon_kernels_dir is not None:
-        _gluon_kernels_dir = Path(gluon_kernels_dir)
-    if sycl_kernels_dir is not None:
-        _sycl_kernels_dir = Path(sycl_kernels_dir)
+    overrides = {
+        "specs_dir": specs_dir,
+        "kernels_dir": kernels_dir,
+        "triton_kernels_dir": triton_kernels_dir,
+        "helion_kernels_dir": helion_kernels_dir,
+        "mlir_kernels_dir": mlir_kernels_dir,
+        "gluon_kernels_dir": gluon_kernels_dir,
+        "sycl_kernels_dir": sycl_kernels_dir,
+    }
+    settings.configure(
+        **{key: str(value) for key, value in overrides.items() if value is not None}
+    )
 
 
 def reset_configuration() -> None:
-    """Reset all path configurations to None.
+    """Reset the path configuration to environment/default values.
 
-    Useful for testing or reconfiguring.
+    Only the path settings are reverted (to ``None`` when not set via the
+    environment); other settings (e.g. logging level, MLIR dump flags) are left
+    untouched.
     """
-    global \
-        _specs_dir, \
-        _kernels_dir, \
-        _triton_kernels_dir, \
-        _helion_kernels_dir, \
-        _mlir_kernels_dir, \
-        _gluon_kernels_dir, \
-        _sycl_kernels_dir, \
-        _env_loaded
-    _specs_dir = None
-    _kernels_dir = None
-    _triton_kernels_dir = None
-    _helion_kernels_dir = None
-    _mlir_kernels_dir = None
-    _gluon_kernels_dir = None
-    _sycl_kernels_dir = None
+    global _env_loaded
     _env_loaded = False
+    settings.reset_fields(*_PATH_SETTINGS)
 
 
 def _get_path(
-    configured: Path | None,
     env_var: str,
+    value: str | None,
     default_fn: Callable[[], Path],
     name: str,
 ) -> Path:
-    """Get path from configuration, environment, or default.
+    """Get path from settings or default.
 
     Priority:
-    1. Explicitly configured via configure()
-    2. Environment variable
-    3. Default (relative to project_root)
+    1. Value resolved from central settings (``configure()`` override, then
+       environment variable)
+    2. Default (relative to project_root)
 
     Args:
-        configured: Explicitly configured path
-        env_var: Environment variable name to check
+        env_var: Environment variable name (used for error messages)
+        value: Path value resolved from :mod:`ai_bench.config` settings
         default_fn: Function returning default path
         name: Human-readable name for error messages
 
@@ -185,21 +168,14 @@ def _get_path(
     Raises:
         ConfigurationError: If path cannot be determined or doesn't exist
     """
-    # Priority 1: Explicit configuration
-    if configured is not None:
-        if not configured.exists():
-            raise ConfigurationError(f"{name} does not exist: {configured}")
-        return configured
-
-    # Priority 2: Environment variable
-    env_path = os.environ.get(env_var)
-    if env_path:
-        path = Path(env_path)
+    # Priority 1: Value from settings (explicit override or environment variable)
+    if value:
+        path = Path(value)
         if not path.exists():
-            raise ConfigurationError(f"{name} from {env_var} does not exist: {path}")
+            raise ConfigurationError(f"{name} does not exist: {path}")
         return path
 
-    # Priority 3: Default (project structure)
+    # Priority 2: Default (project structure)
     try:
         return default_fn()
     except Exception:
@@ -241,7 +217,12 @@ def specs() -> Path:
             raise FileNotFoundError(f"Default specs path not found: {path}")
         return path
 
-    return _get_path(_specs_dir, "AIBENCH_SPECS_DIR", default, "Specs directory")
+    return _get_path(
+        "AIBENCH_SPECS_DIR",
+        settings.get_settings().specs_dir,
+        default,
+        "Specs directory",
+    )
 
 
 def kernel_bench_dir() -> Path:
@@ -265,7 +246,12 @@ def kernel_bench_dir() -> Path:
             raise FileNotFoundError(f"Default kernels path not found: {path}")
         return path
 
-    return _get_path(_kernels_dir, "AIBENCH_KERNELS_DIR", default, "Kernels directory")
+    return _get_path(
+        "AIBENCH_KERNELS_DIR",
+        settings.get_settings().kernels_dir,
+        default,
+        "Kernels directory",
+    )
 
 
 def triton_kernels_dir() -> Path:
@@ -290,8 +276,8 @@ def triton_kernels_dir() -> Path:
         return path
 
     return _get_path(
-        _triton_kernels_dir,
         "AIBENCH_TRITON_KERNELS_DIR",
+        settings.get_settings().triton_kernels_dir,
         default,
         "Triton kernels directory",
     )
@@ -319,8 +305,8 @@ def helion_kernels_dir() -> Path:
         return path
 
     return _get_path(
-        _helion_kernels_dir,
         "AIBENCH_HELION_KERNELS_DIR",
+        settings.get_settings().helion_kernels_dir,
         default,
         "Helion kernels directory",
     )
@@ -348,8 +334,8 @@ def mlir_kernels_dir() -> Path:
         return path
 
     return _get_path(
-        _mlir_kernels_dir,
         "AIBENCH_MLIR_KERNELS_DIR",
+        settings.get_settings().mlir_kernels_dir,
         default,
         "MLIR kernels directory",
     )
@@ -377,8 +363,8 @@ def gluon_kernels_dir() -> Path:
         return path
 
     return _get_path(
-        _gluon_kernels_dir,
         "AIBENCH_GLUON_KERNELS_DIR",
+        settings.get_settings().gluon_kernels_dir,
         default,
         "Gluon kernels directory",
     )
@@ -406,8 +392,8 @@ def sycl_kernels_dir() -> Path:
         return path
 
     return _get_path(
-        _sycl_kernels_dir,
         "AIBENCH_SYCL_KERNELS_DIR",
+        settings.get_settings().sycl_kernels_dir,
         default,
         "SYCL kernels directory",
     )

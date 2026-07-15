@@ -5,6 +5,8 @@ from pathlib import Path
 import pytest
 import torch
 
+from ai_bench.config.settings import get_settings
+from ai_bench.config.settings import reset_settings
 from ai_bench.harness import core as ai_hc
 from ai_bench.harness import runner as ai_hr
 from ai_bench.utils.logger import setup_logger
@@ -106,19 +108,92 @@ def test_env_var_log_levels(monkeypatch, caplog):
         logger.debug(debug_txt)
         return caplog.text
 
+    # The log level is read from the environment when the settings are built, so
+    # reset the cache after each change to pick up the new AIBENCH_LOG value.
     monkeypatch.delenv("AIBENCH_LOG", raising=False)
+    reset_settings()
     logger = setup_logger(logger_name, level=logging.INFO)
     out = print_log(logger)
     assert info_txt in out
     assert debug_txt not in out
 
     monkeypatch.setenv("AIBENCH_LOG", "INFO")
+    reset_settings()
     logger = setup_logger(logger_name)
     out = print_log(logger)
     assert info_txt in out
     assert debug_txt not in out
 
     monkeypatch.setenv("AIBENCH_LOG", "DEBUG")
+    reset_settings()
+    logger = setup_logger(logger_name)
+    out = print_log(logger)
+    assert info_txt in out
+    assert debug_txt in out
+
+
+def test_settings_log_levels(monkeypatch, caplog):
+    info_txt = "info msg"
+    debug_txt = "debug msg"
+    logger_name = "log_settings_test"
+
+    def print_log(logger):
+        caplog.clear()
+        logger.info(info_txt)
+        logger.debug(debug_txt)
+        return caplog.text
+
+    # Log level set programmatically via settings, not via env var. Unlike
+    # AIBENCH_LOG, mutating settings directly takes effect immediately, so no
+    # reset is needed between changes.
+    monkeypatch.delenv("AIBENCH_LOG", raising=False)
+    reset_settings()
+
+    # Level unset in settings -> falls back to the level argument (INFO).
+    logger = setup_logger(logger_name, level=logging.INFO)
+    out = print_log(logger)
+    assert info_txt in out
+    assert debug_txt not in out
+
+    # settings.log = "INFO" -> INFO.
+    get_settings().log = "INFO"
+    logger = setup_logger(logger_name)
+    out = print_log(logger)
+    assert info_txt in out
+    assert debug_txt not in out
+
+    # settings.log = "DEBUG" -> DEBUG.
+    get_settings().log = "DEBUG"
+    logger = setup_logger(logger_name)
+    out = print_log(logger)
+    assert info_txt in out
+    assert debug_txt in out
+
+
+def test_settings_log_levels_int(monkeypatch, caplog):
+    info_txt = "info msg"
+    debug_txt = "debug msg"
+    logger_name = "log_settings_int_test"
+
+    def print_log(logger):
+        caplog.clear()
+        logger.info(info_txt)
+        logger.debug(debug_txt)
+        return caplog.text
+
+    # Log level set via settings as an integer value (e.g. logging.DEBUG).
+    monkeypatch.delenv("AIBENCH_LOG", raising=False)
+    reset_settings()
+
+    # settings.log = logging.INFO -> INFO.
+    get_settings().log = logging.INFO
+    logger = setup_logger(logger_name)
+    out = print_log(logger)
+    assert info_txt in out
+    assert debug_txt not in out
+
+    # settings.log = logging.DEBUG -> DEBUG.
+    get_settings().log = logging.DEBUG
     logger = setup_logger(logger_name)
     out = print_log(logger)
     assert info_txt in out

@@ -8,6 +8,7 @@ from . import config
 from .kernel_runner import KernelRunner
 from .kernel_runner import KernelStats
 from ai_bench import utils as ai_utils
+from ai_bench.config.settings import setting_env_vars
 from ai_bench.harness import core as ai_hc
 from ai_bench.utils.csv_logger import CSVLogger
 
@@ -67,9 +68,7 @@ class KernelBenchRunner(KernelRunner):
             "input_values",
             "note",
         ]
-        aibench_env_keys = sorted(
-            [k for k in os.environ.keys() if k.startswith("AIBENCH_")]
-        )
+        aibench_env_keys = sorted(setting_env_vars().keys())
         self.csv_fieldnames.extend(aibench_env_keys)
 
         if csv_path:
@@ -148,9 +147,7 @@ class KernelBenchRunner(KernelRunner):
 
                 if self.csv_logger:
                     # Log all executed variants.
-                    aibench_env = {
-                        k: v for k, v in os.environ.items() if k.startswith("AIBENCH_")
-                    }
+                    aibench_env = setting_env_vars()
                     for run in run_stats:
                         row = {
                             "kernel_name": file,

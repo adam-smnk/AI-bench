@@ -1,12 +1,12 @@
 from collections.abc import Callable
 from collections.abc import Sequence
-import os
 import warnings
 
 import lighthouse.ingress.torch.compile as lh_compile
 from mlir import ir
 import torch
 
+from ai_bench.config.settings import get_settings
 from ai_bench.utils.logger import setup_logger
 
 
@@ -38,10 +38,9 @@ class CPUBackend(lh_compile.MLIRBackend):
         self.logger = setup_logger()
 
         shared_libs = list(shared_libs)
-        lib_paths = os.environ.get("AIBENCH_MLIR_LIB_PATH")
+        lib_paths = get_settings().mlir_lib_paths
         if lib_paths:
-            libs = lib_paths.split(":")
-            shared_libs.extend(libs)
+            shared_libs.extend(lib_paths)
         super().__init__(
             device, fn_compile, dialect, ir_context, shared_libs=shared_libs, **kwargs
         )
@@ -61,7 +60,7 @@ class CPUBackend(lh_compile.MLIRBackend):
         """
         mlir_mod = super().get_mlir(model, example_inputs)
 
-        if os.environ.get("AIBENCH_MLIR_DUMP"):
+        if get_settings().mlir_dump:
             self.logger.info("--- MLIR JIT - Imported IR:\n" + str(mlir_mod))
 
         return mlir_mod
@@ -83,7 +82,7 @@ class CPUBackend(lh_compile.MLIRBackend):
         warnings.filterwarnings("ignore", category=FutureWarning)
         jit_func = super().__call__(model, example_inputs)
 
-        if os.environ.get("AIBENCH_MLIR_DUMP_OBJ"):
+        if get_settings().mlir_dump_obj:
             import uuid
 
             file = "jit-mlir-dump-" + uuid.uuid4().hex + ".o"
