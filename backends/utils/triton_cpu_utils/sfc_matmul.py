@@ -113,11 +113,18 @@ def _block_pack_kernel(
 # implementation from https://github.com/jakubcerveny/gilbert
 #
 # Each program computes a single output tile with the 2D coordinates derived
-# from the precomputed SFC mapping. If `BLOCKING_FACTOR_K == 1`, then program
-# handles all `BLOCKS_K = K // BLOCK_SIZE_K` blocks along the common dimension,
-# otherwise the program performs a partial accumulation of the K blocks in the
-# half-open interval:
-#    [ ik * (BLOCKS_K // BLOCKING_FACTOR_K), (ik + 1) * (BLOCKS_K // BLOCKING_FACTOR_K) )
+# from the precomputed SFC mapping. If `BLOCKING_FACTOR_K == 1`, then the
+# program handles all
+#   `BLOCKS_K = K // BLOCK_SIZE_K`
+# blocks along the common dimension,  otherwise the program performs a partial
+# accumulation of
+#   `BLOCKS_K_PER_PROG = ⌈BLOCKS_K / BLOCKING_FACTOR_K⌉`
+# blocks, starting at
+#   `ik * BLOCKS_K_PER_PROG`
+# and ending at
+#   `min((ik + 1) * BLOCKS_K_PER_PROG, BLOCKS_K)`
+# The partial accumulation is stored in `c_tmp_ptr` and will be loaded and
+# accumulated in the next iteration of the outer loop.
 @triton.jit
 def _sfc_matmul_kernel(
     a_ptr,
@@ -373,23 +380,35 @@ def _finish_softmax_kernel(
 
 
 @triton.jit
-def _no_post_op(x, **kwargs):
+def _no_post_op(x):
     return x
 
 
 @triton.jit
-def _default_init_val(dtype, BLOCK_SIZE_M, **kwargs):
+def _no_post_op_with_arg(
+    x, block_m, block_n, post_op_arg_ptr, M, N, BLOCK_SIZE_M, BLOCK_SIZE_N
+):
+    return x
+
+
+@triton.jit
+def _default_init_val(dtype, BLOCK_SIZE_M):
     return tl.zeros((BLOCK_SIZE_M,), dtype=dtype)
 
 
 @triton.jit
-def _default_reduction_op(x, **kwargs):
+def _default_reduction_op(x, BLOCK_SIZE_M, BLOCK_SIZE_N):
     return x.sum(axis=1)
 
 
 @triton.jit
-def _default_combine_op(a, b, **kwargs):
+def _default_combine_op(a, b):
     return a + b
+
+
+@triton.jit
+def _no_reduction_post_op(x, M, N):
+    return x
 
 
 def pack_weights_for_sfc_matmul(
@@ -634,7 +653,8 @@ def sfc_matmul(
             ACCUM_DTYPE=_torch_to_triton_dtype(accum_dtype),
             OUT_DTYPE=_torch_to_triton_dtype(out_dtype),
             HAS_BIAS=bias is not None,
-            POST_OP=post_op or _no_post_op,
+            POST_OP=post_op
+            or (_no_post_op if post_op_arg is None else _no_post_op_with_arg),
             POST_OP_HAS_ARG=post_op_arg is not None,
             REDUCE_LAST_DIM=reduce_last_dim,
             REDUCTION_BLOCK_OP=reduction_block_op or _default_reduction_op,
@@ -656,7 +676,7 @@ def sfc_matmul(
             BLOCK_SIZE_N=BLOCK_SIZE_N,
             REDUCTION_INIT_VAL=reduction_init_val or _default_init_val,
             REDUCTION_COMBINE_OP=reduction_combine_op or _default_combine_op,
-            REDUCTION_POST_OP=reduction_post_op or _no_post_op,
+            REDUCTION_POST_OP=reduction_post_op or _no_reduction_post_op,
             assume_in_bounds=True,
         )
 
