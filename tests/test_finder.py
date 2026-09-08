@@ -55,6 +55,15 @@ class TestConfiguration:
 
         assert finder.helion_kernels_dir() == helion_dir
 
+    def test_configure_helion_mlir_kernels_dir(self, tmp_path):
+        """Test configuring Helion-MLIR kernels directory."""
+        helion_mlir_dir = tmp_path / "helion_mlir"
+        helion_mlir_dir.mkdir()
+
+        finder.configure(helion_mlir_kernels_dir=helion_mlir_dir)
+
+        assert finder.helion_mlir_kernels_dir() == helion_mlir_dir
+
     def test_configure_mlir_schedules_dir(self, tmp_path):
         """Test configuring MLIR schedules directory."""
         schedules_dir = tmp_path / "schedules"

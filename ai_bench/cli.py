@@ -38,6 +38,9 @@ Examples:
   # Run with Helion backend
   ai-bench --xpu --bench --helion
 
+  # Run with Helion-MLIR backend
+  ai-bench --bench --helion-mlir
+
   # Run with MLIR backend
   ai-bench --bench --mlir
 
@@ -134,6 +137,12 @@ Environment file (.env) example:
         help="Path to Helion kernels directory (default: auto-detect or AIBENCH_HELION_KERNELS_DIR)",
     )
     path_group.add_argument(
+        "--helion-mlir-kernels-dir",
+        type=Path,
+        default=None,
+        help="Path to Helion-MLIR kernels directory (default: auto-detect or AIBENCH_HELION_MLIR_KERNELS_DIR)",
+    )
+    path_group.add_argument(
         "--mlir-kernels-dir",
         type=Path,
         default=None,
@@ -188,6 +197,12 @@ Environment file (.env) example:
         action="store_true",
         default=False,
         help="Use Helion backend",
+    )
+    backend_exclusive.add_argument(
+        "--helion-mlir",
+        action="store_true",
+        default=False,
+        help="Use Helion-MLIR backend",
     )
     backend_exclusive.add_argument(
         "--mlir",
@@ -295,6 +310,7 @@ def main(argv: list[str] | None = None) -> int:
         or args.kernels_dir
         or args.triton_kernels_dir
         or args.helion_kernels_dir
+        or args.helion_mlir_kernels_dir
         or args.mlir_kernels_dir
         or args.gluon_kernels_dir
         or args.sycl_kernels_dir
@@ -304,6 +320,7 @@ def main(argv: list[str] | None = None) -> int:
             kernels_dir=args.kernels_dir,
             triton_kernels_dir=args.triton_kernels_dir,
             helion_kernels_dir=args.helion_kernels_dir,
+            helion_mlir_kernels_dir=args.helion_mlir_kernels_dir,
             mlir_kernels_dir=args.mlir_kernels_dir,
             gluon_kernels_dir=args.gluon_kernels_dir,
             sycl_kernels_dir=args.sycl_kernels_dir,
@@ -322,6 +339,8 @@ def main(argv: list[str] | None = None) -> int:
         backend = core.Backend.TRITON
     elif args.helion:
         backend = core.Backend.HELION
+    elif args.helion_mlir:
+        backend = core.Backend.HELION_MLIR
     elif args.torch_compile:
         backend = core.Backend.PYTORCH_COMPILE
     elif args.mlir:
