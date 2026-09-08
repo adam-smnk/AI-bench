@@ -77,6 +77,13 @@ triton-cpu = [
   "nanobind==2.10.2",
   "lit",
 ]
+helion-mlir = [
+  "helion-mlir",
+  "helion==1.4.0",
+  "lighthouse[ingress_torch_mlir]",
+  "ml-dtypes",
+  "helion-mlir-cpu-utils", # Local kernel helper package (see: backends/utils).
+]
 
 [dependency-groups]
 dev = [
@@ -121,7 +128,9 @@ torch = { index = "pytorch" }
 triton = { git = "https://github.com/triton-lang/triton-cpu.git", rev = "e453f53" }
 lighthouse = { git = "https://github.com/llvm/lighthouse", rev = "d34fc8a" }
 mlir-python-bindings = { index = "eudsl" }
+helion-mlir = { git = "https://github.com/adam-smnk/helion-mlir-backend", branch = "bench-dynamic-pipeline" }
 triton-cpu-utils = { path = "backends/utils/triton_cpu_utils", editable = true }
+helion-mlir-cpu-utils = { path = "backends/utils/helion_mlir_cpu_utils", editable = true }
 
 [[tool.uv.index]]
 name = "pytorch"
@@ -198,7 +207,7 @@ ignore = [
 
 [tool.ruff.lint.isort]
 known-local-folder = ["ai_bench"]
-known-first-party = ["triton_cpu_utils"]
+known-first-party = ["triton_cpu_utils", "helion_mlir_cpu_utils"]
 known-third-party = [
   "torch", "triton", "helion",
   "mlir", "lighthouse", "torch_mlir",

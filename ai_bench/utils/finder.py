@@ -15,6 +15,7 @@ _specs_dir: Path | None = None
 _kernels_dir: Path | None = None
 _triton_kernels_dir: Path | None = None
 _helion_kernels_dir: Path | None = None
+_helion_mlir_kernels_dir: Path | None = None
 _mlir_kernels_dir: Path | None = None
 _mlir_schedules_dir: Path | None = None
 _gluon_kernels_dir: Path | None = None
@@ -88,6 +89,7 @@ def configure(
     kernels_dir: Path | str | None = None,
     triton_kernels_dir: Path | str | None = None,
     helion_kernels_dir: Path | str | None = None,
+    helion_mlir_kernels_dir: Path | str | None = None,
     mlir_kernels_dir: Path | str | None = None,
     mlir_schedules_dir: Path | str | None = None,
     gluon_kernels_dir: Path | str | None = None,
@@ -102,6 +104,7 @@ def configure(
         kernels_dir: Path to PyTorch kernel implementations
         triton_kernels_dir: Path to Triton kernel implementations
         helion_kernels_dir: Path to Helion kernel implementations
+        helion_mlir_kernels_dir: Path to Helion-MLIR kernel implementations
         mlir_kernels_dir: Path to MLIR kernel implementations
         mlir_schedules_dir: Path to MLIR CPU pipeline schedules (YAML descriptors)
         gluon_kernels_dir: Path to Gluon kernel implementations
@@ -119,6 +122,7 @@ def configure(
         _kernels_dir, \
         _triton_kernels_dir, \
         _helion_kernels_dir, \
+        _helion_mlir_kernels_dir, \
         _mlir_kernels_dir, \
         _mlir_schedules_dir, \
         _gluon_kernels_dir, \
@@ -132,6 +136,8 @@ def configure(
         _triton_kernels_dir = Path(triton_kernels_dir)
     if helion_kernels_dir is not None:
         _helion_kernels_dir = Path(helion_kernels_dir)
+    if helion_mlir_kernels_dir is not None:
+        _helion_mlir_kernels_dir = Path(helion_mlir_kernels_dir)
     if mlir_kernels_dir is not None:
         _mlir_kernels_dir = Path(mlir_kernels_dir)
     if mlir_schedules_dir is not None:
@@ -152,6 +158,7 @@ def reset_configuration() -> None:
         _kernels_dir, \
         _triton_kernels_dir, \
         _helion_kernels_dir, \
+        _helion_mlir_kernels_dir, \
         _mlir_kernels_dir, \
         _mlir_schedules_dir, \
         _gluon_kernels_dir, \
@@ -161,6 +168,7 @@ def reset_configuration() -> None:
     _kernels_dir = None
     _triton_kernels_dir = None
     _helion_kernels_dir = None
+    _helion_mlir_kernels_dir = None
     _mlir_kernels_dir = None
     _mlir_schedules_dir = None
     _gluon_kernels_dir = None
@@ -331,6 +339,37 @@ def helion_kernels_dir() -> Path:
         "AIBENCH_HELION_KERNELS_DIR",
         default,
         "Helion kernels directory",
+    )
+
+
+def helion_mlir_kernels_dir() -> Path:
+    """Path to the Helion-MLIR kernels directory.
+
+    Can be configured via:
+    - ai_bench.configure(helion_mlir_kernels_dir=...)
+    - AIBENCH_HELION_MLIR_KERNELS_DIR environment variable
+    - Auto-detected from project structure
+
+    Returns:
+        Path to Helion-MLIR kernels directory
+
+    Raises:
+        ConfigurationError: If path cannot be determined
+    """
+
+    def default() -> Path:
+        path = project_root() / "backends" / "helion_mlir"
+        if not path.exists():
+            raise FileNotFoundError(
+                f"Default Helion-MLIR kernels path not found: {path}"
+            )
+        return path
+
+    return _get_path(
+        _helion_mlir_kernels_dir,
+        "AIBENCH_HELION_MLIR_KERNELS_DIR",
+        default,
+        "Helion-MLIR kernels directory",
     )
 
 

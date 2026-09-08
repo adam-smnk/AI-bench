@@ -5,13 +5,13 @@
 [![KernelBench Perf](https://github.com/libxsmm/AI-bench/actions/workflows/kernel_bench.yml/badge.svg)](https://github.com/libxsmm/AI-bench/actions/workflows/kernel_bench.yml)
 ![Status](https://img.shields.io/badge/status-beta-yellow)
 
-A benchmarking framework for evaluating AI kernel implementations across multiple backends (PyTorch, Triton, Helion, MLIR, Gluon, SYCL) and devices (CPU, XPU, CUDA).
+A benchmarking framework for evaluating AI kernel implementations across multiple backends (PyTorch, Triton, Helion, MLIR, Helion-MLIR, Gluon, SYCL) and devices (CPU, XPU, CUDA).
 
-| | PyTorch | Triton | Helion | MLIR | Gluon | SYCL |
-|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| **CPU** | ✅ | ✅<sup>1</sup> | ❌ | ✅<sup>2</sup> | ❌ | ❌ |
-| **XPU** | ✅ | ✅ | ✅ | ✅<sup>2</sup>* | ✅ | ✅ |
-| **CUDA** | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ |
+| | PyTorch | Triton | Helion | MLIR | Helion-MLIR | Gluon | SYCL |
+|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| **CPU** | ✅ | ✅<sup>1</sup> | ❌ | ✅<sup>2</sup> | ✅<sup>2</sup> | ❌ | ❌ |
+| **XPU** | ✅ | ✅ | ✅ | ✅<sup>2</sup>* | ❌ | ✅ | ✅ |
+| **CUDA** | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
 
 ✅ - Supported ⚠️ - Partially implemented ❌ - Unsupported
 
@@ -52,6 +52,9 @@ uv sync --extra cpu --extra triton-cpu
 
 # CPU + MLIR backend
 uv sync --extra cpu --extra mlir
+
+# CPU + Helion-MLIR backend
+uv sync --extra cpu --extra helion-mlir
 ```
 
 ## Usage
@@ -72,6 +75,9 @@ ai-bench --triton
 
 # MLIR on CPU
 ai-bench --mlir
+
+# Helion-MLIR on CPU
+ai-bench --helion-mlir
 
 # PyTorch on XPU
 ai-bench --xpu
@@ -224,6 +230,7 @@ Notes legend:
 | `--triton` | Use Triton backend (default: PyTorch eager) |
 | `--torch-compile` | Use PyTorch compile mode (default: PyTorch eager) |
 | `--helion` | Use Helion backend (default: PyTorch eager) |
+| `--helion-mlir` | Use Helion-MLIR backend (default: PyTorch eager) |
 | `--mlir` | Use MLIR backend (default: PyTorch eager) |
 | `--gluon` | Use Gluon backend (default: PyTorch eager) |
 | `--sycl` | Use SYCL backend (default: PyTorch eager) |
@@ -239,6 +246,7 @@ Notes legend:
 | `--kernels-dir PATH` | Path to kernels directory (CLI only) |
 | `--triton-kernels-dir PATH` | Path to Triton kernels directory (CLI only) |
 | `--helion-kernels-dir PATH` | Path to Helion kernels directory (CLI only) |
+| `--helion-mlir-kernels-dir PATH` | Path to Helion-MLIR kernels directory (CLI only) |
 | `--mlir-kernels-dir PATH` | Path to MLIR kernels directory (CLI only) |
 | `--gluon-kernels-dir PATH` | Path to Gluon kernels directory (CLI only) |
 | `--sycl-kernels-dir PATH` | Path to SYCL kernels directory (CLI only) |
@@ -298,6 +306,7 @@ Environment variables used for project configuration:
 | `AIBENCH_KERNELS_DIR` | Path to PyTorch kernels directory |
 | `AIBENCH_TRITON_KERNELS_DIR` | Path to Triton kernels directory |
 | `AIBENCH_HELION_KERNELS_DIR` | Path to Helion kernels directory |
+| `AIBENCH_HELION_MLIR_KERNELS_DIR` | Path to Helion-MLIR kernels directory |
 | `AIBENCH_MLIR_KERNELS_DIR` | Path to MLIR kernels directory |
 | `AIBENCH_MLIR_SCHEDULES_DIR` | Path to MLIR CPU pipeline schedules (YAML descriptors) directory |
 | `AIBENCH_MLIR_LIB_PATH` | Paths to MLIR shared libraries (colon separated) |

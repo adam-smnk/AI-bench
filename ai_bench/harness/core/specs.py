@@ -79,6 +79,7 @@ class Backend(StrEnum):
     TRITON = "triton"
     HELION = "helion"
     MLIR = "mlir"
+    HELION_MLIR = "helion-mlir"
     GLUON = "gluon"
     SYCL = "sycl"
 
