@@ -69,7 +69,7 @@ def _pack_a_kernel(a: Tensor, m_pad: hl.constexpr, k_pad: hl.constexpr) -> Tenso
 @helion.kernel(
     static_shapes=True,
     backend="mlir",
-    config=helion.Config(block_sizes=[1, 8, 32]),
+    config=helion.Config(block_sizes=[1, 1]),
     ignore_warnings=[helion.exc.TensorOperationInWrapper],
 )
 def _pack_b_kernel(b: Tensor, k_pad: hl.constexpr, n_pad: hl.constexpr) -> Tensor:
@@ -85,8 +85,12 @@ def _pack_b_kernel(b: Tensor, k_pad: hl.constexpr, n_pad: hl.constexpr) -> Tenso
         b3 = pad.reshape(depth, panels, 32)
 
     out = torch.empty((panels, depth, 32), dtype=b.dtype, device=b.device)
-    for panel, tile_k, tile_n in hl.tile([panels, depth, 32]):
-        out[panel, tile_k, tile_n] = b3[tile_k, panel, tile_n].permute(1, 0, 2)
+    # Nested (not combined) tile loops: each block-count dim gets its own
+    # ragged-safe mask and a much larger per-iteration chunk than tiling the
+    # raw depth extent directly (previously ~65k tiny 8x32 iterations).
+    for panel in hl.tile(panels):
+        for tile_k in hl.tile(depth):
+            out[panel, tile_k, :] = b3[tile_k, panel, :].permute(1, 0, 2)
     return out
 
 
@@ -188,11 +192,11 @@ def _pack_a_kernel_t(a_t: Tensor, m_pad: hl.constexpr, k_pad: hl.constexpr) -> T
 @helion.kernel(
     static_shapes=True,
     backend="mlir",
-    config=helion.Config(block_sizes=[1, 8, 32]),
+    config=helion.Config(block_sizes=[1, 1]),
     ignore_warnings=[helion.exc.TensorOperationInWrapper],
 )
 def _pack_b_kernel_t(b_t: Tensor, k_pad: hl.constexpr, n_pad: hl.constexpr) -> Tensor:
-    """Pack transposed ``[N, K]`` into ``[N_pad/BN, K_pad/BK, BK, BN]``."""
+    """Pack transposed ``[N, K]`` into ``[N_pad/BN, K_pad, BN]``."""
     n, k = int(b_t.shape[0]), int(b_t.shape[1])
     depth = int(k_pad)
     panels = int(n_pad) // 32
@@ -204,10 +208,10 @@ def _pack_b_kernel_t(b_t: Tensor, k_pad: hl.constexpr, n_pad: hl.constexpr) -> T
         b3 = pad.reshape(panels, 32, depth)
 
     out = torch.empty((panels, depth, 32), dtype=b_t.dtype, device=b_t.device)
-    for panel, tile_k, tile_n in hl.tile([panels, depth, 32]):
-        out[panel, tile_k, tile_n] = b3[panel, tile_n, tile_k].permute(0, 2, 1)
-    res = out.view(panels, depth // 32, 32, 32)
-    return res  # noqa: RET504
+    for panel in hl.tile(panels):
+        for tile_k in hl.tile(depth):
+            out[panel, tile_k, :] = b3[panel, :, tile_k].permute(0, 2, 1)
+    return out
 
 
 def pack_a_blocked(
