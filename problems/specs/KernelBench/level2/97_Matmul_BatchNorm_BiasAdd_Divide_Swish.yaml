@@ -24,6 +24,20 @@ ci:
       DIV_VAL: 1.0
     flop: "8*BATCH*IN_FEAT"
 
+mlir-cpu-bench:
+  - params: [X]
+    dtype: bfloat16
+    dims:
+      BATCH: 128
+      IN_FEAT: 4096
+      OUT_FEAT: 4096
+      BN_EPS: 0.00001
+      BN_MOMENTUM: 0.1
+      BIAS_SHAPE: [1]
+      DIV_VAL: 1.0
+    atol: 5.e-3
+    flop: "2*BATCH*IN_FEAT*OUT_FEAT"
+
 bench-cpu:
   - params: [X]
     dtype: bfloat16

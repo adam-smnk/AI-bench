@@ -26,6 +26,17 @@ simple-cpu:
       OUTPUT_SIZE: 1024
       DIVISOR: 10.0
 
+mlir-cpu-bench:
+  - params: [X]
+    dtype: bfloat16
+    dims:
+      BATCH_SIZE: 128
+      INPUT_SIZE: 4096
+      OUTPUT_SIZE: 4096
+      DIVISOR: 10.0
+    atol: 1.e-4
+    flop: "2*BATCH_SIZE*INPUT_SIZE*OUTPUT_SIZE"
+
 bench-cpu:
   - params: [X]
     dtype: bfloat16

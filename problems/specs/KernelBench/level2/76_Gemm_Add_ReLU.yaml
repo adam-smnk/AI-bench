@@ -27,6 +27,17 @@ simple-cpu:
       BIAS_SHAPE: [256] # TODO: bind these to other dims
     atol: 3.5e-2
 
+mlir-cpu-bench:
+  - params: [X]
+    dtype: bfloat16
+    dims:
+      BATCH_SIZE: 128
+      IN_FEATURES: 4096
+      OUT_FEATURES: 4096
+      BIAS_SHAPE: [4096]
+    atol: 3.5e-2
+    flop: "2*BATCH_SIZE*IN_FEATURES*OUT_FEATURES"
+
 bench-cpu:
   - params: [X]
     dtype: bfloat16

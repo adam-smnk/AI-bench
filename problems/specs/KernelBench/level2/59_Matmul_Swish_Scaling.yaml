@@ -27,6 +27,17 @@ simple-cpu:
       SCALING_FACTOR: 2.0
     atol: 2.e-2
 
+mlir-cpu-bench:
+  - params: [X]
+    dtype: bfloat16
+    dims:
+      BATCH_SIZE: 128
+      IN_FEATURES: 4096
+      OUT_FEATURES: 4096
+      SCALING_FACTOR: 2.0
+    atol: 5.e-2
+    flop: "2*BATCH_SIZE*IN_FEATURES*OUT_FEATURES"
+
 bench-cpu:
   - params: [X]
     dtype: bfloat16
