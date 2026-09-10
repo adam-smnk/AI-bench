@@ -8,6 +8,8 @@ class Model(nn.Module):
     and then batch normalization.
     """
 
+    mlir_pipeline = "matmul"
+
     def __init__(self, in_features, out_features, scale_shape, eps=1e-5, momentum=0.1):
         super(Model, self).__init__()
         self.gemm = nn.Linear(in_features, out_features)

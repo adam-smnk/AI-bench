@@ -7,6 +7,8 @@ class Model(nn.Module):
     Model that performs a GEMM, BatchNorm, GELU, and ReLU in sequence.
     """
 
+    mlir_pipeline = "matmul"
+
     def __init__(self, in_features, out_features):
         super(Model, self).__init__()
         self.gemm = nn.Linear(in_features, out_features)

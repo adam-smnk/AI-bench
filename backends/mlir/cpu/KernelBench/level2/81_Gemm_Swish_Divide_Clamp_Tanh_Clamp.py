@@ -7,6 +7,8 @@ class Model(nn.Module):
     Simple model that performs a gemm, swish, divide, clamp, tanh, and clamp operations.
     """
 
+    mlir_pipeline = "matmul"
+
     def __init__(self, in_features, out_features, bias=True):
         super(Model, self).__init__()
         self.gemm = nn.Linear(in_features, out_features, bias=bias)

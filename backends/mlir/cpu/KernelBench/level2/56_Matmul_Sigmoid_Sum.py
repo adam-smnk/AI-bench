@@ -7,6 +7,8 @@ class Model(nn.Module):
     Simple model that performs a matrix multiplication, applies sigmoid, and sums the result.
     """
 
+    mlir_pipeline = "matmul"
+
     def __init__(self, input_size, hidden_size):
         super(Model, self).__init__()
         self.linear = nn.Linear(input_size, hidden_size)
