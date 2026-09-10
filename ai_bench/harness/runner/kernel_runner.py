@@ -279,14 +279,18 @@ class KernelRunner:
 
         # Measure performance.
         with torch.no_grad():
-            meas_us = testing.time(
-                fn,
-                args,
-                warmup=self.warmup,
-                rep=self.rep,
-                min_cache_nuke_mib=self.min_cache_nuke_mib,
-                device=self.device,
-            )
+            try:
+                meas_us = testing.time(
+                    fn,
+                    args,
+                    warmup=self.warmup,
+                    rep=self.rep,
+                    min_cache_nuke_mib=self.min_cache_nuke_mib,
+                    device=self.device,
+                )
+            except Exception as e:
+                self.logger.error(f"Error during benchmarking: {e}")
+                meas_us = float("inf")
 
         # Statistics - FLOPs.
         flop = ai_hc.get_flop(variant)

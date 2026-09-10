@@ -3,7 +3,7 @@ import torch.nn as nn
 
 class Model(nn.Module):
     # FIXME: Issue with tiling, disabled for now.
-    # mlir_pipeline = "matmul"
+    mlir_pipeline = "matmul"
 
     def __init__(self, input_size, layer_sizes, output_size):
         """

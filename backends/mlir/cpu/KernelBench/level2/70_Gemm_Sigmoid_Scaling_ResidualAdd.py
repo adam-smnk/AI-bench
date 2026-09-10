@@ -7,6 +7,8 @@ class Model(nn.Module):
     Model implementing the pattern "Gemm_Sigmoid_Scaling_ResidualAdd".
     """
 
+    mlir_pipeline = "matmul"
+
     def __init__(self, input_size, hidden_size, scaling_factor):
         super(Model, self).__init__()
         self.gemm = nn.Linear(input_size, hidden_size)

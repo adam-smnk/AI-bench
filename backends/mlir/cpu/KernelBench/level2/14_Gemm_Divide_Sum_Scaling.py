@@ -7,6 +7,8 @@ class Model(nn.Module):
     Model that performs a matrix multiplication, division, summation, and scaling.
     """
 
+    mlir_pipeline = "matmul"
+
     def __init__(self, input_size, hidden_size, scaling_factor):
         super(Model, self).__init__()
         self.weight = nn.Parameter(torch.randn(hidden_size, input_size))

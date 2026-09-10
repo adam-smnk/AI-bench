@@ -6,6 +6,8 @@ class Model(nn.Module):
     Simple model that performs a Gemm, multiplies the result, and applies LeakyReLU.
     """
 
+    mlir_pipeline = "matmul"
+
     def __init__(self, in_features, out_features, multiplier, negative_slope):
         super(Model, self).__init__()
         self.gemm = nn.Linear(in_features, out_features)
