@@ -7,7 +7,7 @@ class Model(nn.Module):
     Performs batched matrix multiplication (C = A * B) where A, B, and C have the same batch dimension.
     """
 
-    mlir_pipeline = "batch_matmul"
+    mlir_pipeline = "default"
 
     def __init__(self):
         super(Model, self).__init__()
