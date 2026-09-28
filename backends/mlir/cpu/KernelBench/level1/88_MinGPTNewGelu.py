@@ -7,6 +7,7 @@ import torch.nn as nn
 
 
 class Model(nn.Module):
+    mlir_pipeline = "default"
     """
     Implementation of the GELU activation function currently in Google BERT repo (identical to OpenAI GPT).
     Reference: Gaussian Error Linear Units (GELU) paper: https://arxiv.org/abs/1606.08415

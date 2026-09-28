@@ -2,6 +2,7 @@ import torch.nn as nn
 
 
 class Model(nn.Module):
+    mlir_pipeline = "default"
     """
     Simple model that performs a GEMM, applies Group Normalization, and then HardTanh.
     """

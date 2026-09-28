@@ -3,6 +3,7 @@ import torch.nn as nn
 
 
 class Model(nn.Module):
+    mlir_pipeline = "default"
     """
     A model implementing the pattern "Matmul_AvgPool_GELU_Scale_Max".
     """

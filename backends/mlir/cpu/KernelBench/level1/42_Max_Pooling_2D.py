@@ -3,6 +3,7 @@ import torch.nn as nn
 
 
 class Model(nn.Module):
+    mlir_pipeline = "default"
     """
     Simple model that performs Max Pooling 2D.
     """

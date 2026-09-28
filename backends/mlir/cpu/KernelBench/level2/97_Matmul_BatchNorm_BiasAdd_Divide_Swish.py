@@ -3,6 +3,7 @@ import torch.nn as nn
 
 
 class Model(nn.Module):
+    mlir_pipeline = "default"
     """
     Model that performs a matrix multiplication, batch normalization, bias addition, division, and Swish activation.
     """

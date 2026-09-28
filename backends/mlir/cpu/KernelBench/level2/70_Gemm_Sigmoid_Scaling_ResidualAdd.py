@@ -3,6 +3,7 @@ import torch.nn as nn
 
 
 class Model(nn.Module):
+    mlir_pipeline = "default"
     """
     Model implementing the pattern "Gemm_Sigmoid_Scaling_ResidualAdd".
     """

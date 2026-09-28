@@ -2,6 +2,7 @@ import torch.nn as nn
 
 
 class Model(nn.Module):
+    mlir_pipeline = "default"
     """
     Simple model that performs a Gemm, multiplies the result, and applies LeakyReLU.
     """

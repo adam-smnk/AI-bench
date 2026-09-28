@@ -3,6 +3,7 @@ import torch.nn as nn
 
 
 class Model(nn.Module):
+    mlir_pipeline = "default"
     """
     Performs 4D tensor-matrix multiplication:
         C[b, i, j, k] = sum_l A[b, i, j, l] * B[l, k]

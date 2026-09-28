@@ -3,6 +3,7 @@ import torch.nn as nn
 
 
 class Model(nn.Module):
+    mlir_pipeline = "default"
     """
     Model that performs a GEMM, followed by a max operation, subtraction, and GELU activation.
     """

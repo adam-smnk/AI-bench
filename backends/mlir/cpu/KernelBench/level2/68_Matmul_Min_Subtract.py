@@ -3,6 +3,7 @@ import torch.nn as nn
 
 
 class Model(nn.Module):
+    mlir_pipeline = "default"
     """
     Simple model that performs a matrix multiplication, applies minimum, and subtracts a constant.
     """

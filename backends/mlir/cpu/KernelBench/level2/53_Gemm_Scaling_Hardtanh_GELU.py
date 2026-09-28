@@ -2,6 +2,7 @@ import torch.nn as nn
 
 
 class Model(nn.Module):
+    mlir_pipeline = "default"
     """
     Model that performs a GEMM, scaling, hardtanh, and GELU activation.
     """

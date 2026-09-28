@@ -2,6 +2,7 @@ import torch.nn as nn
 
 
 class Model(nn.Module):
+    mlir_pipeline = "default"
     """
     A model that performs a matrix multiplication, scaling, and residual addition.
 

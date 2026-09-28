@@ -3,6 +3,7 @@ import torch.nn as nn
 
 
 class Model(nn.Module):
+    mlir_pipeline = "default"
     """
     A model that performs matrix multiplication, applies dropout, and then applies softmax.
     """

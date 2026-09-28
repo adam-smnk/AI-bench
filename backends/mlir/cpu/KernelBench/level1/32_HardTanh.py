@@ -4,6 +4,7 @@ import torch.nn.functional as F
 
 
 class Model(nn.Module):
+    mlir_pipeline = "default"
     """
     Simple model that performs a HardTanh activation.
     """

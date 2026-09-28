@@ -3,6 +3,7 @@ import torch.nn as nn
 
 
 class Model(nn.Module):
+    mlir_pipeline = "default"
     """
     A model that performs a matrix multiplication, divides by a scalar, and applies GELU activation.
     """
