@@ -898,7 +898,7 @@ ci:
 import torch
 
 class Model(torch.nn.Module):
-    mlir_pipeline = "matmul"
+    mlir_pipeline = "default"
 
     def forward(self, x):
         return x
@@ -913,7 +913,7 @@ class Model(torch.nn.Module):
         fake_mlir.cpu_backend.return_value = "cpu-backend"
 
         class FakeModel:
-            mlir_pipeline = "matmul"
+            mlir_pipeline = "default"
 
             def __init__(self):
                 self.compile = mock.Mock()
@@ -943,7 +943,7 @@ class Model(torch.nn.Module):
                 )
 
         fake_mlir.get_cpu_compile_fn.assert_called_once_with(
-            pipeline="matmul", dtype="bfloat16"
+            pipeline="default", dtype="bfloat16"
         )
         fake_mlir.cpu_backend.assert_called_once_with("cpu-compile-fn")
         fake_mlir.get_xpu_compile_fn.assert_not_called()

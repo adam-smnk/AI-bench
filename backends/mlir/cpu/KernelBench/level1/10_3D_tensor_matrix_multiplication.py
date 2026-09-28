@@ -7,8 +7,7 @@ class Model(nn.Module):
     Performs 3D tensor-matrix multiplication.
     """
 
-    # FIXME: Issue with tiling, disabled for now.
-    # mlir_pipeline = "batch_matmul"
+    mlir_pipeline = "default"
 
     def __init__(self):
         super(Model, self).__init__()

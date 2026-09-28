@@ -7,7 +7,7 @@ class Model(nn.Module):
     Simple model that performs a single matrix multiplication (C = A * B) with A and B being symmetric matrices.
     """
 
-    mlir_pipeline = "matmul"
+    mlir_pipeline = "default"
 
     def __init__(self):
         super(Model, self).__init__()

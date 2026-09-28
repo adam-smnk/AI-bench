@@ -7,7 +7,7 @@ class Model(nn.Module):
     Simple model that performs a matrix-scalar multiplication (C = A * s)
     """
 
-    mlir_pipeline = "element_wise"
+    mlir_pipeline = "default"
 
     def __init__(self):
         super(Model, self).__init__()

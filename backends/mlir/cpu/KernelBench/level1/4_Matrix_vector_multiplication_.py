@@ -7,7 +7,7 @@ class Model(nn.Module):
     Simple model that performs matrix-vector multiplication (C = A * B).
     """
 
-    mlir_pipeline = "matvec"
+    mlir_pipeline = "default"
 
     def __init__(self):
         super(Model, self).__init__()
