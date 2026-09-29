@@ -28,6 +28,17 @@ simple-cpu:
       K: 96
     flop: "2*B*I*J*K*L"
 
+# mlir-cpu-common:
+#   - params: [A, B]
+#     dtype: bfloat16
+#     dims:
+#       B: 64
+#       I: 128
+#       J: 64
+#       L: 128
+#       K: 96
+#     flop: 2*B*I*J*K*L
+
 bench-cpu:
   - params: [A, B]
     dtype: bfloat16

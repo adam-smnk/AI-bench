@@ -17,6 +17,16 @@ ci:
       OUT_FEATURES: 32
       DROPOUT_P: 0.2
 
+mlir-cpu-common:
+  - params: [X]
+    dtype: bfloat16
+    dims:
+      BATCH_SIZE: 128
+      IN_FEATURES: 16384
+      OUT_FEATURES: 16384
+      DROPOUT_P: 0.2
+    flop: "2*BATCH_SIZE*IN_FEATURES*OUT_FEATURES+7*BATCH_SIZE*OUT_FEATURES"
+
 bench-cpu:
   - params: [X]
     dtype: bfloat16

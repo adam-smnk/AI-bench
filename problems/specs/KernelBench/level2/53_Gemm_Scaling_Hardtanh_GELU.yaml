@@ -32,6 +32,18 @@ simple-cpu:
       HARDTANH_MIN: -2
       HARDTANH_MAX: 2
 
+mlir-cpu-common:
+  - params: [X]
+    dtype: bfloat16
+    dims:
+      BATCH_SIZE: 2048
+      IN_FEATURES: 8192
+      OUT_FEATURES: 8192
+      SCALING_FACTOR: 0.5
+      HARDTANH_MIN: -2
+      HARDTANH_MAX: 2
+    flop: "2*BATCH_SIZE*IN_FEATURES*OUT_FEATURES+12*BATCH_SIZE*OUT_FEATURES"
+
 bench-cpu:
   - params: [X]
     dtype: bfloat16

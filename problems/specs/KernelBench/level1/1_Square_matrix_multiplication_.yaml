@@ -18,6 +18,15 @@ simple-cpu:
     dims:
       N: 512
 
+mlir-cpu-common:
+  - params: [A, B]
+    dtype: bfloat16
+    dims:
+      - N: 1024
+      - N: 2048
+      - N: 4096
+    flop: "2*N*N*N"
+
 bench-cpu:
   - params: [A, B]
     dtype: bfloat16

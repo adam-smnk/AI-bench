@@ -21,6 +21,17 @@ ci:
       ADD_VALUE_SHAPE: [64]
     flop: "2*BATCH*IN_FEAT*OUT_FEAT"
 
+mlir-cpu-common:
+  - params: [X]
+    dtype: bfloat16
+    dims:
+      BATCH: 1024
+      IN_FEAT: 8192
+      OUT_FEAT: 8192
+      ADD_VALUE_SHAPE: [8192]
+    flop: "2*BATCH*IN_FEAT*OUT_FEAT"
+    atol: 0.01
+
 bench-cpu:
   - params: [X]
     dtype: bfloat16

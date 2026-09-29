@@ -18,6 +18,25 @@ ci:
       SCALE: 1.5
     flop: "2*BATCH*IN_SIZE*HIDDEN_SIZE + BATCH*HIDDEN_SIZE"
 
+mlir-cpu-common:
+  - params: [X]
+    dtype: float32
+    dims:
+      BATCH: 256
+      IN_SIZE: 1024
+      HIDDEN_SIZE: 1024
+      SCALE: 1.5
+    flop: "2*BATCH*IN_SIZE*HIDDEN_SIZE + BATCH*HIDDEN_SIZE"
+  - params: [X]
+    dtype: bfloat16
+    dims:
+      BATCH: 1024
+      IN_SIZE: 8192
+      HIDDEN_SIZE: 8192
+      SCALE: 1.5
+    flop: "2*BATCH*IN_SIZE*HIDDEN_SIZE + BATCH*HIDDEN_SIZE"
+    atol: .inf
+
 bench-cpu:
   - params: [X]
     dtype: bfloat16

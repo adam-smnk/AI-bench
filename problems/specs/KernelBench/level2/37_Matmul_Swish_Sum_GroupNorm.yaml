@@ -19,6 +19,18 @@ ci:
       NUM_GROUPS: 4
       BIAS_SHAPE: [16]
 
+# mlir-cpu-common:
+#   - params: [X]
+#     dtype: bfloat16
+#     dims:
+#       BATCH_SIZE: 32768
+#       IN_FEATURES: 1024
+#       OUT_FEATURES: 4096
+#       NUM_GROUPS: 16
+#       BIAS_SHAPE: [4096]
+#     atol: 0.02
+#     flop: "2*BATCH_SIZE*IN_FEATURES*OUT_FEATURES+9*BATCH_SIZE*OUT_FEATURES"
+
 bench-cpu:
   - params: [X]
     dtype: bfloat16

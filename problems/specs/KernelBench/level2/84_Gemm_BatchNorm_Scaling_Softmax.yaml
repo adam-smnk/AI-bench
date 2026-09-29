@@ -21,6 +21,18 @@ ci:
       BN_MOMENTUM: 0.1
       SCALE_SHAPE: [1]
 
+# mlir-cpu-common:
+#   - params: [X]
+#     dtype: bfloat16
+#     dims:
+#       BATCH_SIZE: 1024
+#       IN_FEATURES: 8192
+#       OUT_FEATURES: 8192
+#       BN_EPS: 1.0e-05
+#       BN_MOMENTUM: 0.1
+#       SCALE_SHAPE: [1]
+#     flop: "2*BATCH_SIZE*IN_FEATURES*OUT_FEATURES+11*BATCH_SIZE*OUT_FEATURES"
+
 bench-cpu:
   - params: [X]
     dtype: bfloat16

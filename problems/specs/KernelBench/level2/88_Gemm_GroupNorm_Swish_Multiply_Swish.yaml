@@ -19,6 +19,18 @@ ci:
       NUM_GROUPS: 4
       MULTIPLY_WEIGHT_SHAPE: [32] # TODO: bind these to other dims
 
+# mlir-cpu-common:
+#   - params: [X]
+#     dtype: bfloat16
+#     dims:
+#       BATCH_SIZE: 1024
+#       IN_FEATURES: 8192
+#       OUT_FEATURES: 8192
+#       NUM_GROUPS: 256
+#       MULTIPLY_WEIGHT_SHAPE: [8192]
+#     atol: 0.05
+#     flop: "2*BATCH_SIZE*IN_FEATURES*OUT_FEATURES+16*BATCH_SIZE*OUT_FEATURES"
+
 bench-cpu:
   - params: [X]
     dtype: bfloat16

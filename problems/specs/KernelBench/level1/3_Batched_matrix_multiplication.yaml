@@ -24,6 +24,16 @@ simple-cpu:
       N: 1024
       K: 256
 
+mlir-cpu-common:
+  - params: [A, B]
+    dtype: bfloat16
+    dims:
+      BATCH: 128
+      M: 512
+      N: 1024
+      K: 2048
+    flop: "2*BATCH*M*N*K"
+
 bench-cpu:
   - params: [A, B]
     dtype: bfloat16

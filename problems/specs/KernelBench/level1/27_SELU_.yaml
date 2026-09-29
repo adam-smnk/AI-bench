@@ -21,6 +21,14 @@ simple-cpu:
       DIM: 512
     flop: "5*BATCH_SIZE*DIM"
 
+mlir-cpu-common:
+  - params: [x]
+    dtype: float32
+    dims:
+      BATCH_SIZE: 4096
+      DIM: 393216
+    flop: "5*BATCH_SIZE*DIM"
+
 bench-cpu:
   - params: [x]
     dtype: float32

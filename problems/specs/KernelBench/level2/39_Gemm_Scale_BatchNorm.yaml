@@ -17,6 +17,16 @@ ci:
       OUT_FEATURES: 32
       SCALE_SHAPE: [32]
 
+# mlir-cpu-common:
+#   - params: [X]
+#     dtype: bfloat16
+#     dims:
+#       BATCH_SIZE: 16384
+#       IN_FEATURES: 4096
+#       OUT_FEATURES: 4096
+#       SCALE_SHAPE: [4096]
+#     flop: "2*BATCH_SIZE*IN_FEATURES*OUT_FEATURES+6*BATCH_SIZE*OUT_FEATURES"
+
 bench-cpu:
   - params: [X]
     dtype: bfloat16

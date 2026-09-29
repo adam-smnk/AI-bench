@@ -21,6 +21,19 @@ ci:
       HARDTANH_MIN: -2.0
       HARDTANH_MAX: 2.0
 
+# mlir-cpu-common:
+#   - params: [X]
+#     dtype: bfloat16
+#     dims:
+#       BATCH_SIZE: 1024
+#       IN_FEATURES: 8192
+#       OUT_FEATURES: 8192
+#       NUM_GROUPS: 16
+#       HARDTANH_MIN: -2.0
+#       HARDTANH_MAX: 2.0
+#     atol: 0.005
+#     flop: "2*BATCH_SIZE*IN_FEATURES*OUT_FEATURES+6*BATCH_SIZE*OUT_FEATURES"
+
 bench-cpu:
   - params: [X]
     dtype: bfloat16
