@@ -1,12 +1,15 @@
 import torch
 import torch.nn as nn
 
+
 class Model(nn.Module):
     """
-    Model that performs a matrix multiplication (Gemm), followed by LogSumExp, LeakyReLU, 
+    Model that performs a matrix multiplication (Gemm), followed by LogSumExp, LeakyReLU,
     LeakyReLU, GELU, and GELU activations.
     """
+
     mlir_pipeline = "matmul"
+
     def __init__(self, in_features, out_features, bias=True):
         super(Model, self).__init__()
         self.linear = nn.Linear(in_features, out_features, bias=bias)

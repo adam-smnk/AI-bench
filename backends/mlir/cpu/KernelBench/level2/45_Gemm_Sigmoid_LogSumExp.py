@@ -1,13 +1,15 @@
 import torch
 import torch.nn as nn
 
+
 class Model(nn.Module):
     """
     Model that performs a matrix multiplication (Gemm), applies Sigmoid,
     another Gemm, and computes LogSumExp over features.
     """
+
     mlir_pipeline = "matmul"
-    
+
     def __init__(self, input_size, hidden_size, output_size):
         super(Model, self).__init__()
         self.linear1 = nn.Linear(input_size, hidden_size)
