@@ -10,10 +10,10 @@ ci:
   - params: [A, B]
     dtype: float32
     dims:
-      N: 4
+      N: 32
       M: 32
       K: 64
-      L: 24
+      L: 96
     flop: "2*N*M*L*K"
 
 simple-cpu:
