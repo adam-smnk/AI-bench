@@ -2,7 +2,7 @@
 #
 # Helion MLIR benchmarking setup
 export AIBENCH_WARMUP=10
-export AIBENCH_REP=500
+export AIBENCH_REP=100
 export KMP_AFFINITY=granularity=fine,compact,1,0
 export OMP_NUM_THREADS=64
 export LD_PRELOAD=/lib64/libtcmalloc.so:$LD_PRELOAD

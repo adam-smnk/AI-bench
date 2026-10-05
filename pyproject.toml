@@ -126,9 +126,11 @@ conflicts = [
 [tool.uv.sources]
 torch = { index = "pytorch" }
 triton = { git = "https://github.com/triton-lang/triton-cpu.git", rev = "7798748" }
-lighthouse = { git = "https://github.com/llvm/lighthouse", rev = "65aaf02" }
+# lighthouse = { git = "https://github.com/llvm/lighthouse", rev = "65aaf02" }
+lighthouse = { path = "../lighthouse", editable = true }
 mlir-python-bindings = { index = "eudsl" }
-helion-mlir = { git = "https://github.com/adam-smnk/helion-mlir-backend", branch = "bench-dynamic-pipeline" }
+# helion-mlir = { git = "https://github.com/adam-smnk/helion-mlir-backend", branch = "bench-dynamic-pipeline" }
+helion-mlir = { path = "..", editable = true }
 triton-cpu-utils = { path = "backends/utils/triton_cpu_utils", editable = true }
 helion-mlir-cpu-utils = { path = "backends/utils/helion_mlir_cpu_utils", editable = true }
 
