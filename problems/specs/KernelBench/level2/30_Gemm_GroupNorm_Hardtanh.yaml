@@ -20,6 +20,7 @@ ci:
       NUM_GROUPS: 4
       HARDTANH_MIN: -2.0
       HARDTANH_MAX: 2.0
+    flop: "2*BATCH_SIZE*IN_FEATURES*OUT_FEATURES"
 
 bench-cpu:
   - params: [X]
@@ -31,4 +32,5 @@ bench-cpu:
       NUM_GROUPS: 16
       HARDTANH_MIN: -2.0
       HARDTANH_MAX: 2.0
+    flop: "2*BATCH_SIZE*IN_FEATURES*OUT_FEATURES"
     atol: .005

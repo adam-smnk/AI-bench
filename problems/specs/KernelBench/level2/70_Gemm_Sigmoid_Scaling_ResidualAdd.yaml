@@ -16,6 +16,7 @@ ci:
       INPUT_SIZE: 32
       HIDDEN_SIZE: 32
       SCALING_FACTOR: 2.0
+    flop: "2*BATCH_SIZE*INPUT_SIZE*HIDDEN_SIZE"
 
 simple-cpu:
   - params: [X]
@@ -25,6 +26,7 @@ simple-cpu:
       INPUT_SIZE: 256
       HIDDEN_SIZE: 256
       SCALING_FACTOR: 2.0
+    flop: "2*BATCH_SIZE*INPUT_SIZE*HIDDEN_SIZE"
     atol: 2.e-2
 
 mlir-cpu-bench:
@@ -46,6 +48,7 @@ bench-cpu:
       INPUT_SIZE: 8192
       HIDDEN_SIZE: 8192
       SCALING_FACTOR: 2.0
+    flop: "2*BATCH_SIZE*INPUT_SIZE*HIDDEN_SIZE"
     atol: 3.5e-2
 
 mlir-gpu-bench:
@@ -56,4 +59,5 @@ mlir-gpu-bench:
       INPUT_SIZE: 8192
       HIDDEN_SIZE: 8192
       SCALING_FACTOR: 2.0
+    flop: "2*BATCH_SIZE*INPUT_SIZE*HIDDEN_SIZE"
     atol: 3.5e-2

@@ -14,6 +14,7 @@ ci:
       BATCH_SIZE: 2
       IN_FEATURES: 32
       OUT_FEATURES: 32
+    flop: "2*BATCH_SIZE*IN_FEATURES*OUT_FEATURES"
 
 mlir-cpu-bench:
   - params: [X]
@@ -32,3 +33,4 @@ bench-cpu:
       BATCH_SIZE: 16384
       IN_FEATURES: 4096
       OUT_FEATURES: 4096
+    flop: "2*BATCH_SIZE*IN_FEATURES*OUT_FEATURES"

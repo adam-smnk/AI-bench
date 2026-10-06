@@ -20,6 +20,7 @@ ci:
       SCALE_FACTOR: 2.0
       CLAMP_MIN: -10.0
       CLAMP_MAX: 10.0
+    flop: "2*BATCH_SIZE*INPUT_SIZE*HIDDEN_SIZE"
 
 bench-cpu:
   - params: [X]
@@ -31,3 +32,4 @@ bench-cpu:
       SCALE_FACTOR: 2.0
       CLAMP_MIN: -10.0
       CLAMP_MAX: 10.0
+    flop: "2*BATCH_SIZE*INPUT_SIZE*HIDDEN_SIZE"

@@ -16,6 +16,7 @@ ci:
       INPUT_SIZE: 32
       HIDDEN_SIZE: 32
       NUM_GROUPS: 4
+    flop: "2*BATCH_SIZE*INPUT_SIZE*HIDDEN_SIZE"
 
 bench-cpu:
   - params: [X]
@@ -25,4 +26,5 @@ bench-cpu:
       INPUT_SIZE: 8192
       HIDDEN_SIZE: 8192
       NUM_GROUPS: 512
+    flop: "2*BATCH_SIZE*INPUT_SIZE*HIDDEN_SIZE"
     atol: 0.025

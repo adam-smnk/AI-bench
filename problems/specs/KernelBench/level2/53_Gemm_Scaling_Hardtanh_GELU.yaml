@@ -20,6 +20,7 @@ ci:
       SCALING_FACTOR: 0.5
       HARDTANH_MIN: -2
       HARDTANH_MAX: 2
+    flop: "2*BATCH_SIZE*IN_FEATURES*OUT_FEATURES"
 
 simple-cpu:
   - params: [X]
@@ -31,6 +32,7 @@ simple-cpu:
       SCALING_FACTOR: 0.5
       HARDTANH_MIN: -2
       HARDTANH_MAX: 2
+    flop: "2*BATCH_SIZE*IN_FEATURES*OUT_FEATURES"
 
 mlir-cpu-bench:
   - params: [X]
@@ -55,3 +57,4 @@ bench-cpu:
       SCALING_FACTOR: 0.5
       HARDTANH_MIN: -2
       HARDTANH_MAX: 2
+    flop: "2*BATCH_SIZE*IN_FEATURES*OUT_FEATURES"

@@ -20,6 +20,7 @@ ci:
       BN_EPS: 0.00001
       BN_MOMENTUM: 0.1
       SCALE_SHAPE: [1]
+    flop: "2*BATCH_SIZE*IN_FEATURES*OUT_FEATURES"
 
 bench-cpu:
   - params: [X]
@@ -31,3 +32,4 @@ bench-cpu:
       BN_EPS: 0.00001
       BN_MOMENTUM: 0.1
       SCALE_SHAPE: [1]
+    flop: "2*BATCH_SIZE*IN_FEATURES*OUT_FEATURES"
