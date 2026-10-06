@@ -8,6 +8,7 @@ from helion_mlir_cpu_utils import identity_epilogue
 from helion_mlir_cpu_utils import matmul
 from helion_mlir_cpu_utils import matmul_prepacked_b
 from helion_mlir_cpu_utils import pack_b_blocked_t
+from helion_mlir_cpu_utils import pack_b_vnni_t
 
 _CACHE_PREPACKED_WEIGHTS_ENV = "HELION_MLIR_CACHE_PREPACKED_WEIGHTS"
 
@@ -57,9 +58,9 @@ class Model(nn.Module):
             for layer in self.layers:
                 weight = layer.weight.detach().to(dtype=x.dtype, device=x.device)
                 bias = layer.bias.detach().to(dtype=x.dtype, device=x.device)
-                packed_layers.append(
-                    (pack_b_blocked_t(weight), bias, int(layer.out_features))
-                )
+                # bf16 weights in AMX's VNNI layout: read in place, no per-call pack.
+                pack = pack_b_vnni_t if x.dtype == torch.bfloat16 else pack_b_blocked_t
+                packed_layers.append((pack(weight), bias, int(layer.out_features)))
             self._prepacked_layers = (cache_key, packed_layers)
         return self._prepacked_layers[1]
 
