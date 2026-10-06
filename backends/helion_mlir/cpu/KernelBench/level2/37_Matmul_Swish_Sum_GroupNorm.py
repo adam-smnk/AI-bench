@@ -4,6 +4,8 @@ import helion_mlir_backend  # noqa: F401
 import torch
 import torch.nn as nn
 
+from helion_mlir_cpu_utils import linear
+
 # K pairs per AMX step.
 _PAIRS_STEP = 32
 # K pairs per tile of the weight pack.
@@ -58,6 +60,31 @@ def _gemm_swish_group_norm(
 
 
 _KERNELS: dict[tuple, helion.Kernel] = {}
+
+
+def _swish(x: torch.Tensor) -> torch.Tensor:
+    return torch.sigmoid(x) * x
+
+
+def _bias_group_norm(
+    y3: torch.Tensor, params: torch.Tensor, eps: hl.constexpr
+) -> torch.Tensor:
+    """``GroupNorm(y + bias2)`` of ``y3`` ``[M, G, N/G]``, ``params`` as in
+    :func:`_gemm_swish_group_norm`."""
+    m, groups, group_size = y3.shape
+    hl.specialize(group_size)
+    out = torch.empty_like(y3)
+    for tile_m, tile_g in hl.tile([m, groups]):
+        y = y3[tile_m, tile_g, :].to(torch.float32) + params[1, tile_g, :]
+        mean = y.mean(-1, keepdim=True)
+        centered = y - mean
+        var = (centered * centered).mean(-1, keepdim=True)
+        y = (
+            centered * torch.rsqrt(var + eps) * params[2, tile_g, :]
+            + params[3, tile_g, :]
+        )
+        out[tile_m, tile_g, :] = y.to(y3.dtype)
+    return out
 
 
 def _pack_groups_f32(b_t: torch.Tensor, group_size: hl.constexpr) -> torch.Tensor:
@@ -145,8 +172,11 @@ class Model(nn.Module):
         self.bias = nn.Parameter(torch.randn(bias_shape))
         self.group_norm = nn.GroupNorm(num_groups, out_features)
         self._cache = None
+        self._linear_cache = None
 
-    def _packed(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    def _packed(
+        self, x: torch.Tensor, fused: bool
+    ) -> tuple[torch.Tensor | None, torch.Tensor]:
         sources = (
             self.matmul.weight,
             self.matmul.bias,
@@ -158,13 +188,16 @@ class Model(nn.Module):
             tuple((p.data_ptr(), p._version) for p in sources),
             x.dtype,
             x.device,
+            fused,
         )
         if self._cache is None or self._cache[0] != key:
             weight = self.matmul.weight.detach().to(dtype=x.dtype, device=x.device)
             n, k = weight.shape
             groups = self.group_norm.num_groups
             group_size = n // groups
-            if x.dtype == torch.bfloat16:
+            if not fused:
+                packed = None
+            elif x.dtype == torch.bfloat16:
                 packed = _kernel(_pack_groups, [_PACK_PAIRS, group_size])(
                     weight.contiguous().view(n, k // 2, 2), hl.constexpr(group_size)
                 )
@@ -188,18 +221,19 @@ class Model(nn.Module):
         group_size = n // groups
         bf16 = x.dtype == torch.bfloat16
         k_step = 2 * _PAIRS_STEP if bf16 else 32
-        if (
-            x.dtype not in (torch.bfloat16, torch.float32)
-            or k % k_step
-            or group_size % 32
-        ):
-            raise ValueError(
-                f"fused GEMM+GroupNorm needs bf16 or f32, K % {k_step} == 0 and "
-                f"groups of a multiple of 32 channels; got {x.dtype}, K={k}, "
-                f"group size {group_size}"
-            )
-        packed, params = self._packed(x)
+        if x.dtype not in (torch.bfloat16, torch.float32):
+            raise ValueError(f"GEMM+GroupNorm needs bf16 or f32, got {x.dtype}")
         eps = hl.constexpr(self.group_norm.eps)
+        # The fused kernel needs whole AMX K steps and 32-channel groups.
+        fused = not k % k_step and not group_size % 32
+        packed, params = self._packed(x, fused)
+        if not fused:
+            y, self._linear_cache = linear(x, self.matmul, _swish, self._linear_cache)
+            rows = max(1, min(32, -(-m // torch.get_num_threads())))
+            out = _kernel(_bias_group_norm, [rows, 1])(
+                y.view(m, groups, group_size), params, eps
+            )
+            return out.view(m, n)
         if bf16:
             block_sizes = _block_sizes(m, k // 2, groups, group_size)
             out = _kernel(_gemm_swish_group_norm, block_sizes)(
