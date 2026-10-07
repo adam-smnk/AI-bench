@@ -1,16 +1,13 @@
-import os
-
 import helion_mlir_backend  # noqa: F401
 import torch
 import torch.nn as nn
 
+from helion_mlir_cpu_utils import cache_prepacked_weights
 from helion_mlir_cpu_utils import identity_epilogue
 from helion_mlir_cpu_utils import matmul
 from helion_mlir_cpu_utils import matmul_prepacked_b
 from helion_mlir_cpu_utils import pack_b_blocked_t
 from helion_mlir_cpu_utils import pack_b_vnni_t
-
-_CACHE_PREPACKED_WEIGHTS_ENV = "HELION_MLIR_CACHE_PREPACKED_WEIGHTS"
 
 
 def _linear(x: torch.Tensor, layer: nn.Linear, epilogue) -> torch.Tensor:
@@ -30,9 +27,9 @@ def _parameter_key(parameter: torch.Tensor) -> tuple:
 class Model(nn.Module):
     """KernelBench-compatible MLP.
 
-    Set ``HELION_MLIR_CACHE_PREPACKED_WEIGHTS=1`` to model deployment with
-    constant weights: the first forward packs each weight and later forwards
-    reuse it. By default every forward retains the full runtime packing cost.
+    By default each weight is packed by the first forward and reused, modeling
+    deployment with constant weights; ``HELION_MLIR_CACHE_PREPACKED_WEIGHTS=0``
+    packs them on every forward.
     """
 
     def __init__(self, input_size, layer_sizes, output_size, *args, **kwargs):
@@ -65,7 +62,7 @@ class Model(nn.Module):
         return self._prepacked_layers[1]
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        if os.environ.get(_CACHE_PREPACKED_WEIGHTS_ENV, "").strip() == "1":
+        if cache_prepacked_weights():
             packed_layers = self._get_prepacked_layers(x)
             for packed_weight, bias, out_features in packed_layers[:-1]:
                 x = matmul_prepacked_b(
@@ -84,7 +81,7 @@ class Model(nn.Module):
                 epilogue=identity_epilogue,
             )
 
-        # Default comparison path: pack weights on every timed call.
+        # Packing weights on every timed call.
         for layer in self.layers[:-1]:
             x = _linear(x, layer, torch.relu)
         return _linear(x, self.layers[-1], identity_epilogue)

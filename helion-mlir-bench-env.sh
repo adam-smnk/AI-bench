@@ -7,4 +7,4 @@ export KMP_AFFINITY=granularity=fine,compact,1,0
 export OMP_NUM_THREADS=64
 export LD_PRELOAD=/lib64/libtcmalloc.so:$LD_PRELOAD
 export HELION_MLIR_PIPELINE=opt
-#export HELION_MLIR_CACHE_PREPACKED_WEIGHTS=0 or 1
+#export HELION_MLIR_CACHE_PREPACKED_WEIGHTS=0  # pack weights on every call (default: cached)

@@ -7,8 +7,8 @@ from helion_mlir_cpu_utils import linear
 
 
 class Model(nn.Module):
-    """Linear + ReLU layers, each one fused kernel (``HELION_MLIR_CACHE_PREPACKED_WEIGHTS=1``
-    reuses packed weights across calls, else every call packs them)."""
+    """Linear + ReLU layers, each one fused kernel; weights packed once and reused
+    (``HELION_MLIR_CACHE_PREPACKED_WEIGHTS=0``: packed on every call)."""
 
     def __init__(self, input_size, hidden_layer_sizes, output_size):
         super().__init__()
