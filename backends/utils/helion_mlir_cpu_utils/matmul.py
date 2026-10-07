@@ -614,7 +614,8 @@ def _matmul_prepacked_vnni_call(
         tile_m = min(
             _round_up(-(-m // tiles_m), BLOCK_M),
             max(m // BLOCK_M * BLOCK_M, BLOCK_M),
-            (1 << 18) // panel,
+            # Whole register tiles: a ragged row tile loses AMX (768 panels: 341 rows).
+            max((1 << 18) // panel // BLOCK_M * BLOCK_M, BLOCK_M),
         )
         pairs_even = k // 2 // BLOCK_K * BLOCK_K
         # Packed B per K chunk: 512 KiB, 256 KiB for tiles of few rows, which

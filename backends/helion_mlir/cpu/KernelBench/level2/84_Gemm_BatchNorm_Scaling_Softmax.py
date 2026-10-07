@@ -85,6 +85,7 @@ class Model(nn.Module):
         y, self._linear_cache = linear(x, self.gemm, cache=self._linear_cache)
         m, n = y.shape
         bn = self.bn
+        # Rows per tile: at most 16 and every thread gets a tile; 128-wide chunks.
         rows = max(1, min(16, m // torch.get_num_threads()))
         return _kernel(min(n, 128), rows)(
             y,

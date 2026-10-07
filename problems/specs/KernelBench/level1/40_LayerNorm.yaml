@@ -15,6 +15,7 @@ ci:
       DIM1: 64
       DIM2: 64
       NORMALIZED_SHAPE: [4, 64, 64] # TODO: bind these to other dims
+    flop: "8*BATCH_SIZE*FEATURES*DIM1*DIM2"
 
 simple-cpu:
   - params: [x]
@@ -25,3 +26,16 @@ simple-cpu:
       DIM1: 64
       DIM2: 64
       NORMALIZED_SHAPE: [4, 64, 64] # TODO: bind these to other dims
+    flop: "8*BATCH_SIZE*FEATURES*DIM1*DIM2"
+
+bench-cpu:
+  - params: [x]
+    dtype: float32
+    dims:
+      BATCH_SIZE: 16
+      FEATURES: 64
+      DIM1: 256
+      DIM2: 256
+      NORMALIZED_SHAPE: [64, 256, 256] # TODO: bind these to other dims
+    flop: "8*BATCH_SIZE*FEATURES*DIM1*DIM2"
+    mem_bytes: "(2*BATCH_SIZE*FEATURES*DIM1*DIM2) * 4" # f32

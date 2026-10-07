@@ -229,6 +229,7 @@ class Model(nn.Module):
         packed, params = self._packed(x, fused)
         if not fused:
             y, self._linear_cache = linear(x, self.matmul, _swish, self._linear_cache)
+            # Rows per tile: at most 32, spread over all threads; one group per tile.
             rows = max(1, min(32, -(-m // torch.get_num_threads())))
             out = _kernel(_bias_group_norm, [rows, 1])(
                 y.view(m, groups, group_size), params, eps
