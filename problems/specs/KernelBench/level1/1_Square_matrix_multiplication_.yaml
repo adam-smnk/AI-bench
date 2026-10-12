@@ -18,6 +18,13 @@ simple-cpu:
     dims:
       N: 512
 
+test:
+  - params: [A, B]
+    dtype: bfloat16
+    dims:
+      N: 1024
+    flop: "2*N*N*N"
+
 bench-cpu:
   - params: [A, B]
     dtype: bfloat16
