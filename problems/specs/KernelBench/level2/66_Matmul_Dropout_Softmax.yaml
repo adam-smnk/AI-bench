@@ -16,6 +16,7 @@ ci:
       IN_FEATURES: 32
       OUT_FEATURES: 32
       DROPOUT_P: 0.2
+    flop: "2*BATCH_SIZE*IN_FEATURES*OUT_FEATURES"
 
 bench-cpu:
   - params: [X]
@@ -25,3 +26,14 @@ bench-cpu:
       IN_FEATURES: 16384
       OUT_FEATURES: 16384
       DROPOUT_P: 0.2
+    flop: "2*BATCH_SIZE*IN_FEATURES*OUT_FEATURES"
+
+tiled-bench:
+  - params: [X]
+    dtype: bfloat16
+    dims:
+      BATCH_SIZE: 128
+      IN_FEATURES: 16384
+      OUT_FEATURES: 16384
+      DROPOUT_P: 0.2
+    flop: "2*BATCH_SIZE*IN_FEATURES*OUT_FEATURES"

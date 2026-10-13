@@ -39,3 +39,14 @@ bench-cpu:
       CONSTANT: 2.0
     flop: "2*BATCH_SIZE*IN_FEATURES*OUT_FEATURES"
     atol: 0.04  # ReLU-like kernel suspectible to exploding rtol when expected value is zero.
+
+tiled-bench:
+  - params: [X]
+    dtype: bfloat16
+    dims:
+      BATCH_SIZE: 128
+      IN_FEATURES: 16384
+      OUT_FEATURES: 16384
+      CONSTANT: 2.0
+    flop: "2*BATCH_SIZE*IN_FEATURES*OUT_FEATURES"
+    atol: 0.04  # ReLU-like kernel suspectible to exploding rtol when expected value is zero.

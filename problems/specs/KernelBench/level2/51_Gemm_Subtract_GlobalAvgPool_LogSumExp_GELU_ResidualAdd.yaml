@@ -25,3 +25,13 @@ bench-cpu:
       OUT_FEATURES: 8192
     flop: "2*BATCH_SIZE*IN_FEATURES*OUT_FEATURES"
     atol: 0.0001
+
+tiled-bench:
+  - params: [X]
+    dtype: bfloat16
+    dims:
+      BATCH_SIZE: 2048
+      IN_FEATURES: 8192
+      OUT_FEATURES: 8192
+    flop: "2*BATCH_SIZE*IN_FEATURES*OUT_FEATURES"
+    atol: 0.0001

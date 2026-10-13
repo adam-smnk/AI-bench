@@ -43,3 +43,15 @@ bench-cpu:
       BIAS_SHAPE: [4096]
     flop: "2*BATCH_SIZE*IN_FEATURES*OUT_FEATURES"
     atol: .02
+
+tiled-bench:
+  - params: [X]
+    dtype: bfloat16
+    dims:
+      BATCH_SIZE: 32768
+      IN_FEATURES: 1024
+      OUT_FEATURES: 4096
+      NUM_GROUPS: 16
+      BIAS_SHAPE: [4096]
+    flop: "2*BATCH_SIZE*IN_FEATURES*OUT_FEATURES"
+    atol: .02

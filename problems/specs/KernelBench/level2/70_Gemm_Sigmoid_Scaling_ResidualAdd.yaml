@@ -51,6 +51,17 @@ bench-cpu:
     flop: "2*BATCH_SIZE*INPUT_SIZE*HIDDEN_SIZE"
     atol: 3.5e-2
 
+
+tiled-bench:
+  - params: [X]
+    dtype: bfloat16
+    dims:
+      BATCH_SIZE: 1024
+      INPUT_SIZE: 8192
+      HIDDEN_SIZE: 8192
+      SCALING_FACTOR: 2.0
+    flop: "2*BATCH_SIZE*INPUT_SIZE*HIDDEN_SIZE"
+    atol: 3.5e-2
 mlir-gpu-bench:
   - params: [X]
     dtype: bfloat16

@@ -28,3 +28,14 @@ bench-cpu:
       NUM_GROUPS: 512
     flop: "2*BATCH_SIZE*INPUT_SIZE*HIDDEN_SIZE"
     atol: 0.025
+
+tiled-bench:
+  - params: [X]
+    dtype: bfloat16
+    dims:
+      BATCH_SIZE: 1024
+      INPUT_SIZE: 8192
+      HIDDEN_SIZE: 8192
+      NUM_GROUPS: 512
+    flop: "2*BATCH_SIZE*INPUT_SIZE*HIDDEN_SIZE"
+    atol: 0.025

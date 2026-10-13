@@ -35,3 +35,12 @@ bench-cpu:
       INPUT_SIZE: 32768
       HIDDEN_SIZE: 32768
     flop: "2*BATCH_SIZE*INPUT_SIZE*HIDDEN_SIZE"
+
+tiled-bench:
+  - params: [X]
+    dtype: bfloat16
+    dims:
+      BATCH_SIZE: 128
+      INPUT_SIZE: 32768
+      HIDDEN_SIZE: 32768
+    flop: "2*BATCH_SIZE*INPUT_SIZE*HIDDEN_SIZE"

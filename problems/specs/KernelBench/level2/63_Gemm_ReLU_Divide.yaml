@@ -39,6 +39,16 @@ bench-cpu:
       DIVISOR: 2.0
     flop: "2*BATCH_SIZE*IN_FEATURES*OUT_FEATURES"
 
+
+tiled-bench:
+  - params: [X]
+    dtype: bfloat16
+    dims:
+      BATCH_SIZE: 1024
+      IN_FEATURES: 8192
+      OUT_FEATURES: 8192
+      DIVISOR: 2.0
+    flop: "2*BATCH_SIZE*IN_FEATURES*OUT_FEATURES"
 mlir-gpu-bench:
   - params: [X]
     dtype: bfloat16

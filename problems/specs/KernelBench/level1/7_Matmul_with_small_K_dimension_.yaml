@@ -33,6 +33,16 @@ bench-cpu:
       K: 64
     flop: "2*M*N*K"
 
+
+tiled-bench:
+  - params: [A, B]
+    dtype: bfloat16
+    dims:
+      M: 8192
+      N: 8192
+      K: 64
+    flop: "2*M*N*K"
+
 mlir-cpu-bench:
   - params: [A, B]
     dtype: float32

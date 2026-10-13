@@ -31,3 +31,15 @@ bench-cpu:
       BIAS_SHAPE: [1, 8192, 1, 1] # TODO: bind these to other dims
     flop: "2*BATCH_SIZE*IN_FEATURES*OUT_FEATURES"
     atol: 0.05
+
+tiled-bench:
+  - params: [X]
+    dtype: bfloat16
+    dims:
+      BATCH_SIZE: 1024
+      IN_FEATURES: 8192
+      OUT_FEATURES: 8192
+      NUM_GROUPS: 512
+      BIAS_SHAPE: [1, 8192, 1, 1] # TODO: bind these to other dims
+    flop: "2*BATCH_SIZE*IN_FEATURES*OUT_FEATURES"
+    atol: 0.05

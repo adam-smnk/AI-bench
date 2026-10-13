@@ -25,6 +25,15 @@ bench-cpu:
       OUT_FEAT: 8192
     flop: "2*BATCH*IN_FEAT*OUT_FEAT"
 
+
+tiled-bench:
+  - params: [X]
+    dtype: bfloat16
+    dims:
+      BATCH: 1024
+      IN_FEAT: 8192
+      OUT_FEAT: 8192
+    flop: "2*BATCH*IN_FEAT*OUT_FEAT"
 bench-gpu:
   - params: [X]
     dtype: float16

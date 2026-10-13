@@ -49,6 +49,16 @@ bench-cpu:
       SCALING_FACTOR: 0.5
     flop: "2*BATCH_SIZE*IN_FEATURES*OUT_FEATURES + 2*BATCH_SIZE*OUT_FEATURES"
 
+tiled-bench:
+  - params: [X]
+    dtype: bfloat16
+    dims:
+      BATCH_SIZE: 16384
+      IN_FEATURES: 4096
+      OUT_FEATURES: 4096
+      SCALING_FACTOR: 0.5
+    flop: "2*BATCH_SIZE*IN_FEATURES*OUT_FEATURES + 2*BATCH_SIZE*OUT_FEATURES"
+
 mlir-gpu-bench:
   - params: [X]
     dtype: bfloat16

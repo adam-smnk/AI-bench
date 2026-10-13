@@ -35,3 +35,15 @@ bench-cpu:
       DIM2: 256
     flop: "3*BATCH_SIZE*FEATURES*DIM1*DIM2"
     mem_bytes: "(2*BATCH_SIZE*FEATURES*DIM1*DIM2) * 4" # f32
+
+# Increased batch size for better eager parallelization
+tiled-bench:
+  - params: [x]
+    dtype: float32
+    dims:
+      BATCH_SIZE: 64
+      FEATURES: 64
+      DIM1: 256
+      DIM2: 256
+    flop: "3*BATCH_SIZE*FEATURES*DIM1*DIM2"
+    mem_bytes: "(2*BATCH_SIZE*FEATURES*DIM1*DIM2) * 4" # f32

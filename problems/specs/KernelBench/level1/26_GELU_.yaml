@@ -29,3 +29,12 @@ bench-cpu:
       DIM: 393216
     flop: "5*BATCH_SIZE*DIM"
     mem_bytes: "(2*BATCH_SIZE*DIM) * 4" # f32
+
+tiled-bench:
+  - params: [x]
+    dtype: float32
+    dims:
+      BATCH_SIZE: 4096
+      DIM: 16384
+    flop: "5*BATCH_SIZE*DIM"
+    mem_bytes: "(2*BATCH_SIZE*DIM) * 4" # f32
