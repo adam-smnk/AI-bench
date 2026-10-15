@@ -20,7 +20,7 @@ ci:
       NEG_SLOPE: 0.1
     flop: "2*BATCH*IN_FEAT*OUT_FEAT + 4*BATCH*OUT_FEAT"
 
-bench-cpu:
+l2-bench:
   - params: [X]
     dtype: bfloat16
     dims:

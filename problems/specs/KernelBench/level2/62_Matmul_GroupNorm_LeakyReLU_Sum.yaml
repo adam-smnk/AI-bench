@@ -17,7 +17,7 @@ ci:
       HIDDEN_SIZE: 32
       NUM_GROUPS: 4
 
-bench-cpu:
+l2-bench:
   - params: [X]
     dtype: bfloat16
     dims:

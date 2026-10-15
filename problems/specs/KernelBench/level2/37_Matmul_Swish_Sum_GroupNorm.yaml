@@ -19,7 +19,7 @@ ci:
       NUM_GROUPS: 4
       BIAS_SHAPE: [16]
 
-bench-cpu:
+l2-bench:
   - params: [X]
     dtype: bfloat16
     dims:

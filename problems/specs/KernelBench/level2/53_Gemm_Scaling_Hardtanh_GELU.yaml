@@ -32,7 +32,7 @@ simple-cpu:
       HARDTANH_MIN: -2
       HARDTANH_MAX: 2
 
-bench-cpu:
+l2-bench:
   - params: [X]
     dtype: bfloat16
     dims:

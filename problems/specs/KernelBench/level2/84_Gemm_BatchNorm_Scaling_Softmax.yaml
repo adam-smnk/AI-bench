@@ -21,7 +21,7 @@ ci:
       BN_MOMENTUM: 0.1
       SCALE_SHAPE: [1]
 
-bench-cpu:
+l2-bench:
   - params: [X]
     dtype: bfloat16
     dims:

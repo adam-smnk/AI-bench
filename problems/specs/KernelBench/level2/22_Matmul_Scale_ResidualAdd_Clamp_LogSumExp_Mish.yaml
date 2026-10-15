@@ -21,7 +21,7 @@ ci:
       CLAMP_MIN: -10.0
       CLAMP_MAX: 10.0
 
-bench-cpu:
+l2-bench:
   - params: [X]
     dtype: bfloat16
     dims:

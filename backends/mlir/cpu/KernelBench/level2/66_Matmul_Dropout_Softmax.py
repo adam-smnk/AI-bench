@@ -7,6 +7,8 @@ class Model(nn.Module):
     A model that performs matrix multiplication, applies dropout, and then applies softmax.
     """
 
+    mlir_pipeline = "default"
+
     def __init__(self, in_features, out_features, dropout_p):
         super(Model, self).__init__()
         self.matmul = nn.Linear(in_features, out_features)

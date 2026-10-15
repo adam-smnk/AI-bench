@@ -27,7 +27,7 @@ simple-cpu:
       SCALING_FACTOR: 2.0
     atol: 2.e-2
   
-bench-cpu:
+l2-bench:
   - params: [X]
     dtype: bfloat16
     dims:

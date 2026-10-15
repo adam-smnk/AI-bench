@@ -16,7 +16,7 @@ ci:
       OUT_FEAT: 64
     flop: "2*BATCH*IN_FEAT*OUT_FEAT"
 
-bench-cpu:
+l2-bench:
   - params: [X]
     dtype: bfloat16
     dims:

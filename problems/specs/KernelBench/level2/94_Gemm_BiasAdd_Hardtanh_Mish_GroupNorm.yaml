@@ -19,7 +19,7 @@ ci:
       BIAS_SHAPE: [32] # TODO: bind these to other dims
       NUM_GROUPS: 4
 
-bench-cpu:
+l2-bench:
   - params: [X]
     dtype: bfloat16
     dims:

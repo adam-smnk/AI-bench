@@ -7,6 +7,8 @@ class Model(nn.Module):
     Simple model that performs a matrix multiplication, applies GELU, and then applies Softmax.
     """
 
+    mlir_pipeline = "default"
+
     def __init__(self, in_features, out_features):
         super(Model, self).__init__()
         self.linear = nn.Linear(in_features, out_features)

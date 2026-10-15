@@ -17,7 +17,7 @@ ci:
       HIDDEN_SIZE: 64
       OUTPUT_SIZE: 16
 
-bench-cpu:
+l2-bench:
   - params: [X]
     dtype: bfloat16
     dims:

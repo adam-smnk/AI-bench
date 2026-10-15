@@ -21,7 +21,7 @@ ci:
       HARDTANH_MIN: -2.0
       HARDTANH_MAX: 2.0
 
-bench-cpu:
+l2-bench:
   - params: [X]
     dtype: bfloat16
     dims:

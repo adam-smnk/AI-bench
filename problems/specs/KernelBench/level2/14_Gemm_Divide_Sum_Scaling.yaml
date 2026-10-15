@@ -18,7 +18,7 @@ ci:
       SCALE: 1.5
     flop: "2*BATCH*IN_SIZE*HIDDEN_SIZE + BATCH*HIDDEN_SIZE"
 
-bench-cpu:
+l2-bench:
   - params: [X]
     dtype: bfloat16
     dims:

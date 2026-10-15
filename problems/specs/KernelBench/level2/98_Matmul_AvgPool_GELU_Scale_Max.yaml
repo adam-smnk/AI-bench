@@ -20,7 +20,7 @@ ci:
       SCALE: 2.0
     flop: "BATCH*IN_FEAT*(POOL_KERNEL_SIZE-1) + 2*BATCH*OUT_FEAT*IN_FEAT + BATCH*OUT_FEAT"
 
-bench-cpu:
+l2-bench:
   - params: [X]
     dtype: bfloat16
     dims:

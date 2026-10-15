@@ -19,7 +19,7 @@ ci:
       KERNEL_SIZE: 2
       SCALE_FACTOR: 0.5
 
-bench-cpu:
+l2-bench:
   - params: [X]
     dtype: bfloat16
     dims:

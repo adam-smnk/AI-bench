@@ -15,7 +15,7 @@ ci:
       IN_FEATURES: 64
       OUT_FEATURES: 64
 
-bench-cpu:
+l2-bench:
   - params: [X]
     dtype: bfloat16
     dims:
