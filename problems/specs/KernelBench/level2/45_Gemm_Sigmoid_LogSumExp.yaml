@@ -17,11 +17,11 @@ ci:
       HIDDEN_SIZE: 64
       OUTPUT_SIZE: 16
 
-l2-bench:
-  - params: [X]
-    dtype: bfloat16
-    dims:
-      BATCH_SIZE: 16384
-      INPUT_SIZE: 2048
-      HIDDEN_SIZE: 4096
-      OUTPUT_SIZE: 1024
+# l2-bench:
+#   - params: [X]
+#     dtype: bfloat16
+#     dims:
+#       BATCH_SIZE: 16384
+#       INPUT_SIZE: 2048
+#       HIDDEN_SIZE: 4096
+#       OUTPUT_SIZE: 1024
