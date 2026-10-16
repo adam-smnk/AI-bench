@@ -238,12 +238,9 @@ def time(
         Mean runtime in microseconds
     """
     if not device or device.type == "cpu":
-        try:
-            return time_cpu(
-                fn, args, warmup=warmup, rep=rep, min_cache_nuke_mib=min_cache_nuke_mib
-            )
-        except Exception:
-            return float("inf")
+        return time_cpu(
+            fn, args, warmup=warmup, rep=rep, min_cache_nuke_mib=min_cache_nuke_mib
+        )
     if device.type == "xpu" or device.type == "cuda":
         return time_gpu(device, fn, args, warmup=warmup, rep=rep)
     raise ValueError(f"Unsupported device for timing: {device.type}")

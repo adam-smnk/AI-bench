@@ -19,12 +19,12 @@ ci:
       KERNEL_SIZE: 2
       SCALE_FACTOR: 0.5
 
-# l2-bench:
-#   - params: [X]
-#     dtype: bfloat16
-#     dims:
-#       BATCH_SIZE: 128
-#       IN_FEATURES: 32768
-#       OUT_FEATURES: 32768
-#       KERNEL_SIZE: 2
-#       SCALE_FACTOR: 0.5
+l2-bench:
+  - params: [X]
+    dtype: bfloat16
+    dims:
+      BATCH_SIZE: 128
+      IN_FEATURES: 32768
+      OUT_FEATURES: 32768
+      KERNEL_SIZE: 2
+      SCALE_FACTOR: 0.5
