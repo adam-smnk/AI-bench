@@ -1,0 +1,46 @@
+inputs:
+  X:
+    shape: [BATCH_SIZE, IN_FEATURES]
+    dtype: inherit
+
+inits:
+  - dim: IN_FEATURES
+  - dim: OUT_FEATURES
+  - dim: SCALING_FACTOR
+
+ci:
+  - params: [X]
+    dtype: float32
+    dims:
+      BATCH_SIZE: 2
+      IN_FEATURES: 32
+      OUT_FEATURES: 32
+      SCALING_FACTOR: 0.5
+
+simple-cpu:
+  - params: [X]
+    dtype: bfloat16
+    dims:
+      BATCH_SIZE: 128
+      IN_FEATURES: 1024
+      OUT_FEATURES: 1024
+      SCALING_FACTOR: 0.5
+
+
+l2-bench:
+  - params: [X]
+    dtype: bfloat16
+    dims:
+      BATCH_SIZE: 16384
+      IN_FEATURES: 4096
+      OUT_FEATURES: 4096
+      SCALING_FACTOR: 0.5
+
+mlir-gpu-bench:
+  - params: [X]
+    dtype: bfloat16
+    dims:
+      BATCH_SIZE: 16384
+      IN_FEATURES: 4096
+      OUT_FEATURES: 4096
+      SCALING_FACTOR: 0.5

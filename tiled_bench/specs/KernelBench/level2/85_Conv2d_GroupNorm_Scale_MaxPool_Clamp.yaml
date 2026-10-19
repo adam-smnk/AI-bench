@@ -1,0 +1,48 @@
+inputs:
+  X:
+    shape: [BATCH, IN_CH, H, W]
+    dtype: inherit
+
+inits:
+  - dim: IN_CH
+  - dim: OUT_CH
+  - dim: KERNEL_SIZE
+  - dim: NUM_GROUPS
+  - dim: SCALE_SHAPE
+  - dim: MAXPOOL_KERNEL_SIZE
+  - dim: CLAMP_MIN
+  - dim: CLAMP_MAX
+
+ci:
+  - params: [X]
+    dtype: float32
+    dims:
+      BATCH: 2
+      IN_CH: 8
+      OUT_CH: 32
+      H: 16
+      W: 16
+      KERNEL_SIZE: 3
+      NUM_GROUPS: 8
+      SCALE_SHAPE: [32, 1, 1]
+      MAXPOOL_KERNEL_SIZE: 4
+      CLAMP_MIN: 0.0
+      CLAMP_MAX: 1.0
+    flop: "2*BATCH*OUT_CH*H*W*(IN_CH/NUM_GROUPS)*KERNEL_SIZE*KERNEL_SIZE"
+
+bench-gpu:
+  - params: [X]
+    dtype: float32
+    dims:
+      BATCH: 128
+      IN_CH: 8
+      OUT_CH: 64
+      H: 128
+      W: 128
+      KERNEL_SIZE: 3
+      NUM_GROUPS: 16
+      SCALE_SHAPE: [64, 1, 1]
+      MAXPOOL_KERNEL_SIZE: 4
+      CLAMP_MIN: 0.0
+      CLAMP_MAX: 1.0
+    flop: "2*BATCH*OUT_CH*H*W*(IN_CH/NUM_GROUPS)*KERNEL_SIZE*KERNEL_SIZE"

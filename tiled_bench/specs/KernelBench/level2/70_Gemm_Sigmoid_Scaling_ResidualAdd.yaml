@@ -1,0 +1,48 @@
+inputs:
+  X:
+    shape: [BATCH_SIZE, INPUT_SIZE]
+    dtype: inherit
+
+inits:
+  - dim: INPUT_SIZE
+  - dim: HIDDEN_SIZE
+  - dim: SCALING_FACTOR
+
+ci:
+  - params: [X]
+    dtype: float32
+    dims:
+      BATCH_SIZE: 2
+      INPUT_SIZE: 32
+      HIDDEN_SIZE: 32
+      SCALING_FACTOR: 2.0
+
+simple-cpu:
+  - params: [X]
+    dtype: bfloat16
+    dims:
+      BATCH_SIZE: 32
+      INPUT_SIZE: 256
+      HIDDEN_SIZE: 256
+      SCALING_FACTOR: 2.0
+    atol: 2.e-2
+  
+l2-bench:
+  - params: [X]
+    dtype: bfloat16
+    dims:
+      BATCH_SIZE: 1024
+      INPUT_SIZE: 8192
+      HIDDEN_SIZE: 8192
+      SCALING_FACTOR: 2.0
+    atol: 3.5e-2
+
+mlir-gpu-bench:
+  - params: [X]
+    dtype: bfloat16
+    dims:
+      BATCH_SIZE: 1024
+      INPUT_SIZE: 8192
+      HIDDEN_SIZE: 8192
+      SCALING_FACTOR: 2.0
+    atol: 3.5e-2

@@ -33,3 +33,4 @@ export KMP_AFFINITY=granularity=fine,compact,1,0
 export OMP_NUM_THREADS=64
 export TORCHINDUCTOR_MAX_AUTOTUNE=1
 #export NUMACTL_CMD="numactl -m 0 -C 0-63"
+export AIBENCH_SPECS_DIR=/data/nfs_home/asiemien/helion-mlir-backend/AI-bench/tiled_bench/specs

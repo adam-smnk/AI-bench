@@ -1,0 +1,53 @@
+inputs:
+  X:
+    shape: [BATCH, IN_FEAT]
+    dtype: inherit
+
+inits:
+  - dim: IN_FEAT
+  - dim: OUT_FEAT
+  - dim: BN_EPS
+  - dim: BN_MOMENTUM
+  - dim: BIAS_SHAPE
+  - dim: DIV_VAL
+
+ci:
+  - params: [X]
+    dtype: float32
+    dims:
+      BATCH: 2
+      IN_FEAT: 64
+      OUT_FEAT: 64
+      BN_EPS: 0.00001
+      BN_MOMENTUM: 0.1
+      BIAS_SHAPE: [1]
+      DIV_VAL: 1.0
+    flop: "8*BATCH*IN_FEAT"
+
+l2-bench:
+  - params: [X]
+    dtype: bfloat16
+    dims:
+      BATCH: 1024
+      IN_FEAT: 8192
+      OUT_FEAT: 8192
+      BN_EPS: 0.00001
+      BN_MOMENTUM: 0.1
+      BIAS_SHAPE: [1]
+      DIV_VAL: 1.0
+    atol: 0.005
+
+bench-gpu:
+  - params: [X]
+    dtype: float16
+    dims:
+      BATCH: 1024
+      IN_FEAT: 4096
+      OUT_FEAT: 4096
+      BN_EPS: 0.00001
+      BN_MOMENTUM: 0.1
+      BIAS_SHAPE: [1]
+      DIV_VAL: 1.0
+    flop: "8*BATCH*IN_FEAT"
+    rtol: 1.4e-03
+    atol: 4.3e-04

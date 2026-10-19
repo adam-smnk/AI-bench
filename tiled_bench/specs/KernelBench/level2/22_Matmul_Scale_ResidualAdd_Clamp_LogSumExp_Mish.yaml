@@ -1,0 +1,33 @@
+inputs:
+  X:
+    shape: [BATCH_SIZE, INPUT_SIZE]
+    dtype: inherit
+
+inits:
+  - dim: INPUT_SIZE
+  - dim: HIDDEN_SIZE
+  - dim: SCALE_FACTOR
+  - dim: CLAMP_MIN
+  - dim: CLAMP_MAX
+
+ci:
+  - params: [X]
+    dtype: float32
+    dims:
+      BATCH_SIZE: 2
+      INPUT_SIZE: 64
+      HIDDEN_SIZE: 64
+      SCALE_FACTOR: 2.0
+      CLAMP_MIN: -10.0
+      CLAMP_MAX: 10.0
+
+# l2-bench:
+#   - params: [X]
+#     dtype: bfloat16
+#     dims:
+#       BATCH_SIZE: 1024
+#       INPUT_SIZE: 8192
+#       HIDDEN_SIZE: 8192
+#       SCALE_FACTOR: 2.0
+#       CLAMP_MIN: -10.0
+#       CLAMP_MAX: 10.0
