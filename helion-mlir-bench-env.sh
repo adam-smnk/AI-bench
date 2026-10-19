@@ -17,10 +17,19 @@
 # # export LD_PRELOAD=/lib64/libtcmalloc.so:$LD_PRELOAD
 # export HELION_MLIR_PIPELINE=opt
 
-# Tiled bench setup
+# # Tiled bench setup
+# export AIBENCH_WARMUP=50
+# export AIBENCH_REP=500
+# export KMP_AFFINITY=granularity=fine,compact,1,0
+# export OMP_NUM_THREADS=64
+# export LD_PRELOAD=/lib64/libtcmalloc.so:$LD_PRELOAD
+# export HELION_MLIR_PIPELINE=opt
+
+# Triton-CPU setup
 export AIBENCH_WARMUP=50
 export AIBENCH_REP=500
+export AIBENCH_CPU_MIN_CACHE_NUKE_MIB=5000
 export KMP_AFFINITY=granularity=fine,compact,1,0
 export OMP_NUM_THREADS=64
-export LD_PRELOAD=/lib64/libtcmalloc.so:$LD_PRELOAD
-export HELION_MLIR_PIPELINE=opt
+export TORCHINDUCTOR_MAX_AUTOTUNE=1
+#export NUMACTL_CMD="numactl -m 0 -C 0-63"
