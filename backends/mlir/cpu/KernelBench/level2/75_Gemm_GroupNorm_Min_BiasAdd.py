@@ -7,6 +7,8 @@ class Model(nn.Module):
     Model that performs a GEMM, Group Normalization, Minimum operation, and Bias addition.
     """
 
+    mlir_pipeline = "default"
+
     def __init__(self, in_features, out_features, num_groups, bias_shape):
         super(Model, self).__init__()
         self.gemm = nn.Linear(in_features, out_features)

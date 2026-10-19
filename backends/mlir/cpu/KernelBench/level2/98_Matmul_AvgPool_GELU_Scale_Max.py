@@ -7,6 +7,8 @@ class Model(nn.Module):
     A model implementing the pattern "Matmul_AvgPool_GELU_Scale_Max".
     """
 
+    mlir_pipeline = "default"
+
     def __init__(self, in_features, out_features, pool_kernel_size, scale_factor):
         super(Model, self).__init__()
         self.matmul = nn.Linear(in_features, out_features)

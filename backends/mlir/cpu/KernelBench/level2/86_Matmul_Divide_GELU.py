@@ -7,7 +7,7 @@ class Model(nn.Module):
     A model that performs a matrix multiplication, divides by a scalar, and applies GELU activation.
     """
 
-    mlir_pipeline = "matmul"
+    mlir_pipeline = "default"
 
     def __init__(self, input_size, output_size, divisor):
         super(Model, self).__init__()

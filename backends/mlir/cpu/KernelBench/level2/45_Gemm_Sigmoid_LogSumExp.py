@@ -8,7 +8,7 @@ class Model(nn.Module):
     another Gemm, and computes LogSumExp over features.
     """
 
-    mlir_pipeline = "matmul"
+    mlir_pipeline = "default"
 
     def __init__(self, input_size, hidden_size, output_size):
         super(Model, self).__init__()

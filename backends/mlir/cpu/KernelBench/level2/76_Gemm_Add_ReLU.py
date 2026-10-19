@@ -7,7 +7,7 @@ class Model(nn.Module):
     Simple model that performs a matrix multiplication, adds a bias term, and applies ReLU.
     """
 
-    mlir_pipeline = "matmul"
+    mlir_pipeline = "default"
 
     def __init__(self, in_features, out_features, bias_shape):
         super(Model, self).__init__()

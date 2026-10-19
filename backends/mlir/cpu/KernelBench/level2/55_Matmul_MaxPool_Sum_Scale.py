@@ -7,6 +7,8 @@ class Model(nn.Module):
     Model that performs matrix multiplication, max pooling, sum, and scaling.
     """
 
+    mlir_pipeline = "default"
+
     def __init__(self, in_features, out_features, kernel_size, scale_factor):
         super(Model, self).__init__()
         self.matmul = nn.Linear(in_features, out_features)

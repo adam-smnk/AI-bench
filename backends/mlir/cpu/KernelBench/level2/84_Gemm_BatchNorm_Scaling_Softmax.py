@@ -7,6 +7,8 @@ class Model(nn.Module):
     Model that performs a matrix multiplication (Gemm), Batch Normalization, scaling, and Softmax.
     """
 
+    mlir_pipeline = "default"
+
     def __init__(
         self, in_features, out_features, bn_eps=1e-5, bn_momentum=0.1, scale_shape=(1,)
     ):

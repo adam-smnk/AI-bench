@@ -7,7 +7,7 @@ class Model(nn.Module):
     Simple model that performs a matrix multiplication, adds a value, applies Swish, Tanh, GELU, and Hardtanh activation functions.
     """
 
-    mlir_pipeline = "matmul"
+    mlir_pipeline = "default"
 
     def __init__(self, in_features, out_features, add_value_shape):
         super(Model, self).__init__()

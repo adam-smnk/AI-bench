@@ -7,6 +7,8 @@ class Model(nn.Module):
     Model that performs a GEMM, followed by a max operation, subtraction, and GELU activation.
     """
 
+    mlir_pipeline = "default"
+
     def __init__(self, in_features, out_features, max_dim):
         super(Model, self).__init__()
         self.gemm = nn.Linear(in_features, out_features)

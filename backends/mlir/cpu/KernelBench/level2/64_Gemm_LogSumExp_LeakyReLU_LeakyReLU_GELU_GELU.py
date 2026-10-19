@@ -8,7 +8,7 @@ class Model(nn.Module):
     LeakyReLU, GELU, and GELU activations.
     """
 
-    mlir_pipeline = "matmul"
+    mlir_pipeline = "default"
 
     def __init__(self, in_features, out_features, bias=True):
         super(Model, self).__init__()

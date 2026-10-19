@@ -7,6 +7,8 @@ class Model(nn.Module):
     A model that performs a GEMM, BiasAdd, Hardtanh, Mish, and GroupNorm operations in sequence.
     """
 
+    mlir_pipeline = "default"
+
     def __init__(self, in_features, out_features, bias_shape, num_groups):
         super(Model, self).__init__()
         self.gemm = nn.Linear(in_features, out_features)
