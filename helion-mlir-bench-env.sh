@@ -25,7 +25,7 @@
 # export LD_PRELOAD=/lib64/libtcmalloc.so:$LD_PRELOAD
 # export HELION_MLIR_PIPELINE=opt
 
-# Triton-CPU setup
+# Triton-CPU setup + helion
 export AIBENCH_WARMUP=50
 export AIBENCH_REP=500
 export AIBENCH_CPU_MIN_CACHE_NUKE_MIB=5000
@@ -34,3 +34,4 @@ export OMP_NUM_THREADS=64
 export TORCHINDUCTOR_MAX_AUTOTUNE=1
 #export NUMACTL_CMD="numactl -m 0 -C 0-63"
 export AIBENCH_SPECS_DIR=/data/nfs_home/asiemien/helion-mlir-backend/AI-bench/tiled_bench/specs
+export PYTHONPATH=/data/nfs_home/asiemien/llvm-project/build/tools/mlir/python_packages/mlir_core/:$PYTHONPATH
