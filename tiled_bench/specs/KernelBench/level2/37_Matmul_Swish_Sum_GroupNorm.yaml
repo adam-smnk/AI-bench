@@ -29,3 +29,4 @@ l2-bench:
       NUM_GROUPS: 16
       BIAS_SHAPE: [4096]
     atol: .02
+    flop: "2*BATCH_SIZE*IN_FEATURES*OUT_FEATURES"

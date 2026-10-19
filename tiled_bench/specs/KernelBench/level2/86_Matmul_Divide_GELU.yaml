@@ -35,3 +35,4 @@ l2-bench:
       OUTPUT_SIZE: 8192
       DIVISOR: 10.0
     atol: 1.e-4
+    flop: "2*BATCH_SIZE*INPUT_SIZE*OUTPUT_SIZE"

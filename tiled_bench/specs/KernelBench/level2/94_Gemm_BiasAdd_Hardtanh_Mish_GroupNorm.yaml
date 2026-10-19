@@ -29,3 +29,4 @@ l2-bench:
       BIAS_SHAPE: [8192] # TODO: bind these to other dims
       NUM_GROUPS: 256
     atol: 0.025
+    flop: "2*BATCH_SIZE*IN_FEATURES*OUT_FEATURES"

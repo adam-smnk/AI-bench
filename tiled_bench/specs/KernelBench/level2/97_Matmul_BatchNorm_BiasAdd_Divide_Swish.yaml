@@ -36,6 +36,7 @@ l2-bench:
       BIAS_SHAPE: [1]
       DIV_VAL: 1.0
     atol: 0.005
+    flop: "8*BATCH*IN_FEAT"
 
 bench-gpu:
   - params: [X]

@@ -26,3 +26,4 @@ l2-bench:
       HIDDEN_SIZE: 8192
       NUM_GROUPS: 512
     atol: 0.025
+    flop: "2*BATCH_SIZE*INPUT_SIZE*HIDDEN_SIZE"

@@ -23,12 +23,14 @@ l2-bench:
       IN_FEATURES: 8192
       OUT_FEATURES: 8192
     atol: .inf  # Mismatch due to higher-precision reduction than reference. Validate with float32 config below.
+    flop: "2*BATCH_SIZE*IN_FEATURES*OUT_FEATURES"
   - params: [X]
     dtype: float32
     dims:
       BATCH_SIZE: 256
       IN_FEATURES: 1024
       OUT_FEATURES: 1024
+    flop: "2*BATCH_SIZE*IN_FEATURES*OUT_FEATURES"
 
 mlir-gpu-bench:
   - params: [X]

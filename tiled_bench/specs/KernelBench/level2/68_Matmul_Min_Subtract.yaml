@@ -26,3 +26,4 @@ l2-bench:
       OUT_FEATURES: 16384
       CONSTANT: 2.0
     atol: 0.04  # ReLU-like kernel suspectible to exploding rtol when expected value is zero.
+    flop: "2*BATCH_SIZE*IN_FEATURES*OUT_FEATURES"

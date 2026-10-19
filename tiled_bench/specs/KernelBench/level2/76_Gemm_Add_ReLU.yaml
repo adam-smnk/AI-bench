@@ -36,3 +36,4 @@ l2-bench:
       OUT_FEATURES: 8192
       BIAS_SHAPE: [8192] # TODO: bind these to other dims
     atol: 3.5e-2
+    flop: "2*BATCH_SIZE*IN_FEATURES*OUT_FEATURES"

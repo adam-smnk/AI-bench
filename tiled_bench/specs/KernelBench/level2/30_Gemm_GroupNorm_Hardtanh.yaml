@@ -32,3 +32,4 @@ l2-bench:
       HARDTANH_MIN: -2.0
       HARDTANH_MAX: 2.0
     atol: .005
+    flop: "2*BATCH_SIZE*IN_FEATURES*OUT_FEATURES"
