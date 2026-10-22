@@ -87,6 +87,7 @@ class TestCreateParser:
         assert args.cuda is False
         assert args.triton is False
         assert args.helion is False
+        assert args.helion_mlir is False
         assert args.torch_compile is False
         assert args.mlir is False
         assert args.gluon is False
@@ -160,6 +161,7 @@ class TestMainBackendSelection:
             ([], ai_hc.Backend.PYTORCH),
             (["--triton"], ai_hc.Backend.TRITON),
             (["--helion"], ai_hc.Backend.HELION),
+            (["--helion-mlir"], ai_hc.Backend.HELION_MLIR),
             (["--torch-compile"], ai_hc.Backend.PYTORCH_COMPILE),
             (["--mlir"], ai_hc.Backend.MLIR),
             (["--gluon"], ai_hc.Backend.GLUON),

@@ -93,6 +93,10 @@ class KernelBenchRunner(KernelRunner):
             self.kernels = (
                 ai_utils.helion_kernels_dir() / self.device.type / "KernelBench"
             )
+        elif self.backend == ai_hc.Backend.HELION_MLIR:
+            self.kernels = (
+                ai_utils.helion_mlir_kernels_dir() / self.device.type / "KernelBench"
+            )
         elif self.backend == ai_hc.Backend.MLIR:
             self.kernels = (
                 ai_utils.mlir_kernels_dir() / self.device.type / "KernelBench"

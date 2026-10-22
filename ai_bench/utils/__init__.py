@@ -4,6 +4,7 @@ from .finder import ConfigurationError
 from .finder import configure
 from .finder import gluon_kernels_dir
 from .finder import helion_kernels_dir
+from .finder import helion_mlir_kernels_dir
 from .finder import kernel_bench_dir
 from .finder import mlir_kernels_dir
 from .finder import mlir_schedules_dir
@@ -27,6 +28,7 @@ __all__ = [
     "eval_eq",
     "gluon_kernels_dir",
     "helion_kernels_dir",
+    "helion_mlir_kernels_dir",
     "import_from_path",
     "kernel_bench_dir",
     "mlir_kernels_dir",
