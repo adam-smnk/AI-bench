@@ -6,6 +6,8 @@ class Model(nn.Module):
     Model that performs a GEMM, scaling, hardtanh, and GELU activation.
     """
 
+    mlir_pipeline = "default"
+
     def __init__(
         self, in_features, out_features, scaling_factor, hardtanh_min, hardtanh_max
     ):

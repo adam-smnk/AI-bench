@@ -7,6 +7,8 @@ class Model(nn.Module):
     Model that performs a matrix multiplication, batch normalization, bias addition, division, and Swish activation.
     """
 
+    mlir_pipeline = "default"
+
     def __init__(
         self,
         in_features,
