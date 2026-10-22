@@ -1,9 +1,5 @@
-try:
-    from enum import StrEnum
-except ImportError:
-    from strenum import StrEnum
-
 import copy
+from enum import StrEnum
 from functools import cache
 from typing import Dict
 

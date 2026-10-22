@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "AI-bench"
 dynamic = ["version"]
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 description = "AI kernel benchmarking harness"
 readme = "README.md"
 license = {text = "MIT"}
@@ -18,7 +18,6 @@ classifiers = [
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: MIT License",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
@@ -35,7 +34,6 @@ dependencies = [
   "einops",
   "argcomplete",
   "natsort",
-  "StrEnum; python_version < '3.11'",
 ]
 
 [project.scripts]
@@ -144,7 +142,7 @@ ai_bench = ["py.typed"]
 version = {attr = "ai_bench.__version__"}
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.11"
 warn_return_any = true
 warn_unused_ignores = true
 
@@ -162,7 +160,7 @@ ignore_missing_imports = true
 
 [tool.ruff]
 src = ["AI-bench"]
-target-version = "py310"
+target-version = "py311"
 line-length = 88
 
 [tool.ruff.format]
