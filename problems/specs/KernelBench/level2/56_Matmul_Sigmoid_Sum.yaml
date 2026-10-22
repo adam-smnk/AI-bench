@@ -14,6 +14,18 @@ ci:
       BATCH_SIZE: 2
       INPUT_SIZE: 32
       HIDDEN_SIZE: 32
+    flop: "2*BATCH_SIZE*INPUT_SIZE*HIDDEN_SIZE"
+
+mlir-cpu-bench:
+  - params: [X]
+    dtype: bfloat16
+    dims:
+      BATCH_SIZE: 128
+      INPUT_SIZE: 4096
+      HIDDEN_SIZE: 4096
+    rtol: 2.e-2
+    atol: 16.0
+    flop: "2*BATCH_SIZE*INPUT_SIZE*HIDDEN_SIZE"
 
 bench-cpu:
   - params: [X]
@@ -22,3 +34,4 @@ bench-cpu:
       BATCH_SIZE: 128
       INPUT_SIZE: 32768
       HIDDEN_SIZE: 32768
+    flop: "2*BATCH_SIZE*INPUT_SIZE*HIDDEN_SIZE"

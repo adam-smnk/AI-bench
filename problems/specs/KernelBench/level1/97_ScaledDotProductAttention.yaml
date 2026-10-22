@@ -29,6 +29,26 @@ simple-cpu:
       SEQUENCE_LENGTH: 64
       EMBEDDING_DIMENSION: 128
 
+mlir-cpu-bench:
+  - params: [Q, K, V]
+    dtype: bfloat16
+    dims:
+      BATCH_SIZE: 32
+      NUM_HEADS: 32
+      SEQUENCE_LENGTH: 512
+      EMBEDDING_DIMENSION: 64
+    atol: 1.0e-02
+    flop: "4*BATCH_SIZE*NUM_HEADS*SEQUENCE_LENGTH*SEQUENCE_LENGTH*EMBEDDING_DIMENSION"
+  - params: [Q, K, V]
+    dtype: bfloat16
+    dims:
+      BATCH_SIZE: 4
+      NUM_HEADS: 32
+      SEQUENCE_LENGTH: 2048
+      EMBEDDING_DIMENSION: 128
+    atol: 1.0e-02
+    flop: "4*BATCH_SIZE*NUM_HEADS*SEQUENCE_LENGTH*SEQUENCE_LENGTH*EMBEDDING_DIMENSION"
+
 mlir-gpu-bench:
   - params: [Q, K, V]
     dtype: bfloat16

@@ -16,6 +16,7 @@ ci:
       NUM_GROUPS: 4
       DIM1: 32
       DIM2: 32
+    flop: "8*BATCH_SIZE*FEATURES*DIM1*DIM2"
 
 simple-cpu:
   - params: [x]
@@ -26,3 +27,16 @@ simple-cpu:
       NUM_GROUPS: 4
       DIM1: 32
       DIM2: 32
+    flop: "8*BATCH_SIZE*FEATURES*DIM1*DIM2"
+
+bench-cpu:
+  - params: [x]
+    dtype: float32
+    dims:
+      BATCH_SIZE: 16
+      FEATURES: 64
+      NUM_GROUPS: 8
+      DIM1: 256
+      DIM2: 256
+    flop: "8*BATCH_SIZE*FEATURES*DIM1*DIM2"
+    mem_bytes: "(2*BATCH_SIZE*FEATURES*DIM1*DIM2) * 4" # f32
