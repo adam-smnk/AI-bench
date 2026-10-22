@@ -18,6 +18,7 @@ ci:
       OUT_FEATURES: 32
       BIAS_SHAPE: [32] # TODO: bind these to other dims
       NUM_GROUPS: 4
+    flop: "2*BATCH_SIZE*IN_FEATURES*OUT_FEATURES"
 
 bench-cpu:
   - params: [X]
@@ -28,4 +29,5 @@ bench-cpu:
       OUT_FEATURES: 8192
       BIAS_SHAPE: [8192] # TODO: bind these to other dims
       NUM_GROUPS: 256
+    flop: "2*BATCH_SIZE*IN_FEATURES*OUT_FEATURES"
     atol: 0.025

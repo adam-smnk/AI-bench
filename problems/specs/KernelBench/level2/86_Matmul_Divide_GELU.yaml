@@ -16,6 +16,7 @@ ci:
       INPUT_SIZE: 32
       OUTPUT_SIZE: 32
       DIVISOR: 10.0
+    flop: "2*BATCH_SIZE*INPUT_SIZE*OUTPUT_SIZE"
 
 simple-cpu:
   - params: [X]
@@ -25,6 +26,18 @@ simple-cpu:
       INPUT_SIZE: 1024
       OUTPUT_SIZE: 1024
       DIVISOR: 10.0
+    flop: "2*BATCH_SIZE*INPUT_SIZE*OUTPUT_SIZE"
+
+mlir-cpu-bench:
+  - params: [X]
+    dtype: bfloat16
+    dims:
+      BATCH_SIZE: 128
+      INPUT_SIZE: 4096
+      OUTPUT_SIZE: 4096
+      DIVISOR: 10.0
+    atol: 1.e-4
+    flop: "2*BATCH_SIZE*INPUT_SIZE*OUTPUT_SIZE"
 
 bench-cpu:
   - params: [X]
@@ -34,4 +47,5 @@ bench-cpu:
       INPUT_SIZE: 8192
       OUTPUT_SIZE: 8192
       DIVISOR: 10.0
+    flop: "2*BATCH_SIZE*INPUT_SIZE*OUTPUT_SIZE"
     atol: 1.e-4

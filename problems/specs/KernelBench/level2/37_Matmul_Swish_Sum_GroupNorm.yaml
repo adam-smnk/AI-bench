@@ -18,6 +18,19 @@ ci:
       OUT_FEATURES: 16
       NUM_GROUPS: 4
       BIAS_SHAPE: [16]
+    flop: "2*BATCH_SIZE*IN_FEATURES*OUT_FEATURES"
+
+mlir-cpu-bench:
+  - params: [X]
+    dtype: bfloat16
+    dims:
+      BATCH_SIZE: 2048
+      IN_FEATURES: 1024
+      OUT_FEATURES: 4096
+      NUM_GROUPS: 16
+      BIAS_SHAPE: [4096]
+    flop: "2*BATCH_SIZE*IN_FEATURES*OUT_FEATURES"
+    atol: .02
 
 bench-cpu:
   - params: [X]
@@ -28,4 +41,5 @@ bench-cpu:
       OUT_FEATURES: 4096
       NUM_GROUPS: 16
       BIAS_SHAPE: [4096]
+    flop: "2*BATCH_SIZE*IN_FEATURES*OUT_FEATURES"
     atol: .02
