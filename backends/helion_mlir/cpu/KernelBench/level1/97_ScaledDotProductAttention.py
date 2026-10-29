@@ -95,9 +95,9 @@ class Model(nn.Module):
         # bf16 runs on AMX, its operands in VNNI layout: pairs along D and along
         # the key block. A sequence of one forms no pair of keys: plain bf16 dots.
         vnni = Q.dtype == torch.bfloat16 and s >= 2
-        # Helion types the full D slice as D rounded up to a power of two, so
-        # the VNNI pairs need D padded to one; zeros change no dot product.
-        dim = max(2, 1 << (d - 1).bit_length()) if vnni else d
+        # The VNNI pairs along D need it even: an odd D gets one zero column,
+        # which changes no dot product.
+        dim = d + d % 2 if vnni else d
         if dim != d:
             Q, K, V = (F.pad(t, (0, dim - d)) for t in (Q, K, V))
         # Tall query blocks pack each K/V block for many rows; swept on EMR.
