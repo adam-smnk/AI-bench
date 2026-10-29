@@ -93,8 +93,8 @@ class Model(nn.Module):
         heads = b * h
         scale = 1.0 / math.sqrt(d)
         # bf16 runs on AMX, its operands in VNNI layout: pairs along D and along
-        # the key block. (Plain bf16 dots do not compile in the backend.)
-        vnni = Q.dtype == torch.bfloat16
+        # the key block. A sequence of one forms no pair of keys: plain bf16 dots.
+        vnni = Q.dtype == torch.bfloat16 and s >= 2
         # Helion types the full D slice as D rounded up to a power of two, so
         # the VNNI pairs need D padded to one; zeros change no dot product.
         dim = max(2, 1 << (d - 1).bit_length()) if vnni else d
