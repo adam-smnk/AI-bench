@@ -23,6 +23,13 @@ A benchmarking framework for evaluating AI kernel implementations across multipl
 Override `PYTHONPATH` to point to `mlir_core` packages and ensure LLVM libs can be found.  
 See Lighthouse [XeGPU example](https://github.com/llvm/lighthouse/blob/main/examples/xegpu/README.md) for more details.
 
+*_NOTE_: Helion-MLIR on XPU (`ai-bench --xpu --helion-mlir --variant mlir-gpu-bench`) runs the kernels of
+`backends/helion_mlir/xpu/KernelBench` (25 level 1 problems with an `mlir-gpu-bench` variant; kernels in
+`backends/utils/helion_mlir_xpu_utils`, installed with the `helion-mlir` extra). The kernels use hand-picked block
+sizes for the `mlir-gpu-bench` shapes, so other variants will not lower. It requires a helion-mlir-backend **with XPU
+support** (not yet in the pinned rev) and an LLVM built with the SPIR-V target to compile and run. Without hardware the
+lowering can be checked up to XeVM IR, see `agent-tools/aibench_helion_xpu_check.py` in the MLIR dev workspace.
+
 ## Project Docs
 * [**Problem Specification Files**](docs/problem_spec.md)
 
@@ -79,6 +86,9 @@ ai-bench --mlir
 
 # Helion-MLIR on CPU
 ai-bench --helion-mlir
+
+# Helion-MLIR on XPU (see the Helion-MLIR XPU note below)
+ai-bench --xpu --helion-mlir --variant mlir-gpu-bench
 
 # PyTorch on XPU
 ai-bench --xpu
