@@ -21,6 +21,16 @@ from .elementwise import softplus
 from .elementwise import softsign
 from .elementwise import swish
 from .elementwise import tanh
+from .linear import LINEAR_BLOCKS
+from .linear import LINEAR_SKINNY_BLOCKS
+from .linear import linear_mish_mish
+from .linear import linear_multiply_leaky_relu
+from .linear import linear_relu_divide
+from .linear import linear_scaling_residual_add
+from .linear import linear_sigmoid_scaling_residual_add
+from .linear import linear_subtract_multiply_relu
+from .linear import linear_swish_divide_clamp_tanh_clamp
+from .linear import linear_swish_scaling
 from .matmul import GEMM_BLOCKS
 from .matmul import matmul
 from .normalization import REDUCTION_BLOCKS
@@ -33,6 +43,8 @@ __all__ = [
     "ATTENTION_BLOCKS",
     "ELEMENTWISE_BLOCKS",
     "GEMM_BLOCKS",
+    "LINEAR_BLOCKS",
+    "LINEAR_SKINNY_BLOCKS",
     "REDUCTION_BLOCKS",
     "attention",
     "elu",
@@ -41,6 +53,14 @@ __all__ = [
     "l1_norm",
     "l2_norm",
     "leaky_relu",
+    "linear_mish_mish",
+    "linear_multiply_leaky_relu",
+    "linear_relu_divide",
+    "linear_scaling_residual_add",
+    "linear_sigmoid_scaling_residual_add",
+    "linear_subtract_multiply_relu",
+    "linear_swish_divide_clamp_tanh_clamp",
+    "linear_swish_scaling",
     "log_softmax",
     "matmul",
     "relu",
