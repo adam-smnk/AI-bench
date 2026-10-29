@@ -5,6 +5,7 @@ import helion.language as hl
 import helion_mlir_backend  # noqa: F401
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 # Growth of a row maximum (in scaled logits) below which the stale maximum is
 # kept: exponentials stay below e^8, well within f32 and bf16 range.
@@ -31,15 +32,18 @@ def _dot_nn(a: torch.Tensor, b: torch.Tensor, vnni: bool) -> torch.Tensor:
 
 
 def _attention(
-    q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, vnni: hl.constexpr
+    q: torch.Tensor,
+    k: torch.Tensor,
+    v: torch.Tensor,
+    scale: hl.constexpr,
+    vnni: hl.constexpr,
 ) -> torch.Tensor:
-    """Softmax attention of ``[BH, S, D]`` heads, online over key blocks: the
-    running row maxima rescale the sums and the output accumulator, only when
-    one of them grows past ``_RESCALE_THRESHOLD``."""
+    """Softmax attention of ``[BH, S, D]`` heads with logits scaled by ``scale``,
+    online over key blocks: the running row maxima rescale the sums and the
+    output accumulator, only when one of them grows past ``_RESCALE_THRESHOLD``."""
     heads, seq, dim = q.shape
     hl.specialize(seq)
     hl.specialize(dim)
-    scale = 1.0 / math.sqrt(dim)
     out = torch.empty_like(q)
     for h in hl.grid(heads):
         for tile_m in hl.tile(seq):
@@ -87,13 +91,26 @@ class Model(nn.Module):
     ) -> torch.Tensor:
         b, h, s, d = Q.shape
         heads = b * h
+        scale = 1.0 / math.sqrt(d)
+        # bf16 runs on AMX, its operands in VNNI layout: pairs along D and along
+        # the key block. (Plain bf16 dots do not compile in the backend.)
+        vnni = Q.dtype == torch.bfloat16
+        # Helion types the full D slice as D rounded up to a power of two, so
+        # the VNNI pairs need D padded to one; zeros change no dot product.
+        dim = max(2, 1 << (d - 1).bit_length()) if vnni else d
+        if dim != d:
+            Q, K, V = (F.pad(t, (0, dim - d)) for t in (Q, K, V))
         # Tall query blocks pack each K/V block for many rows; swept on EMR.
-        block_m = min(s, 512 if d <= 64 else 256)
-        block_n = min(s, 128 if d <= 64 else 64)
+        block_m = min(s, 512 if dim <= 64 else 256)
+        # VNNI pairs along the key block need it even: a block of at least S is
+        # all of S, so an odd S gets one less and a masked tail.
+        block_n = min(s - s % 2 if vnni else s, 128 if dim <= 64 else 64)
         out = _kernel(block_m, block_n)(
-            Q.reshape(heads, s, d),
-            K.reshape(heads, s, d),
-            V.reshape(heads, s, d),
-            hl.constexpr(Q.dtype == torch.bfloat16),
+            Q.reshape(heads, s, dim),
+            K.reshape(heads, s, dim),
+            V.reshape(heads, s, dim),
+            hl.constexpr(scale),
+            hl.constexpr(vnni),
         )
-        return out.view(b, h, s, d)
+        out = out.view(b, h, s, dim)
+        return out if dim == d else out[..., :d].contiguous()
