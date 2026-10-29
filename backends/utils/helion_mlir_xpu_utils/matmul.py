@@ -24,8 +24,9 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
 GEMM_BLOCKS = (256, 256, 32)
-"""256x256 workgroups (lighthouse's subgroup inference picks 32 subgroups of
-32x64) with K steps of 32. Other tiles for particular shapes: 128x128 for the
+"""256x256 workgroups of 32 subgroups (lighthouse's inference picks 64x32
+subgroup tiles for the shapes in its tuned parameter database, 1, 2, 7, 9 and
+13, and 32x64 for the transposed 16-18) with K steps of 32. Other tiles for particular shapes: 128x128 for the
 256x256 output of 6_Matmul_with_large_K_dimension_ (4 workgroups), a 16 K step
 for K = 32 (9_Tall_skinny_matrix_multiplication_; the K loop must stay, DPAS K
 is 16). Transposed operands (A stored ``[K, M]``, B ``[N, K]``) are loaded as
