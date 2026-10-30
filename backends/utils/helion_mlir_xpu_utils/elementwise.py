@@ -6,7 +6,7 @@ kept in sync with it.
 2D bf16 inputs (4096x393216 in the ``mlir-gpu-bench`` variant), computed in f32
 like PyTorch's bf16 kernels. ``[rows, cols]`` workgroup tiles of 128x256
 (lighthouse kernel_bench's elementwise default); the XPU target infers subgroup
-tiles of 32x32 (32 subgroups, 512 threads), 32x32 bf16 block loads and 8x16
+tiles of 32x32 (32 subgroups, 512 threads), 16x16 bf16 block loads and 8x16
 block stores. The tiles divide the input (no masking). Helion kernels cannot
 close over a function, so each activation is its own kernel. Scalar parameters
 are ``hl.constexpr``: compile-time constants, since the backend cannot lower a
