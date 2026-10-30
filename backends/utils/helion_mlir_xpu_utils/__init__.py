@@ -32,6 +32,8 @@ from .linear import linear_subtract_multiply_relu
 from .linear import linear_swish_divide_clamp_tanh_clamp
 from .linear import linear_swish_scaling
 from .matmul import GEMM_BLOCKS
+from .matmul import GEMM_SQUARE
+from .matmul import GEMM_STANDARD
 from .matmul import matmul
 from .normalization import REDUCTION_BLOCKS
 from .normalization import l1_norm
@@ -43,6 +45,8 @@ __all__ = [
     "ATTENTION_BLOCKS",
     "ELEMENTWISE_BLOCKS",
     "GEMM_BLOCKS",
+    "GEMM_SQUARE",
+    "GEMM_STANDARD",
     "LINEAR_BLOCKS",
     "LINEAR_SKINNY_BLOCKS",
     "REDUCTION_BLOCKS",
