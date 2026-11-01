@@ -49,9 +49,9 @@ read+write copy ceiling is 198 GB/s, which torch reaches.
 - 8192 columns: 8 subgroups of 1024 elements per workgroup, 16 KB in and 16 KB
   out. 1024 to 32768 columns measured the same; 8192 divides the spec's
   393216 columns. Other shapes: :func:`block_sizes`.
-- 29_Softplus runs at about 147 GB/s at any tile width, against torch's 191: a
-  gap of the backend's math lowering (one scalar f32 ``log1p`` call per
-  element), not of the tiles.
+- 22_Tanh runs at the ceiling and 29_Softplus at about 186 GB/s (torch 191) on
+  the backend's branch-free math (``xpu_math_approx``); OpenCL's scalar
+  ``log1p`` per element gave Softplus 154 GB/s at these tiles.
 """
 _MAX_COLS = ELEMENTWISE_BLOCKS[1]
 _MIN_COLS = 16
