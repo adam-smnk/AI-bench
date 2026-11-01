@@ -120,3 +120,114 @@ def test_gemm_scale_batchnorm_seed_only_output(key):
         out = model(*args).float()
     error = ((out - expected).abs().max() / expected.abs().max()).item()
     assert error < 2e-2
+
+
+def _pair(key, inits, dtype):
+    """Reference and helion-mlir CPU models of ``key`` built from ``inits``, in
+    eval mode and ``dtype``, with the reference weights copied in. Built right
+    after loading each (see the module docstring)."""
+    ref_runner, mlir_runner = _runners()
+    level, name = key.split("/")
+    set_all_seeds(123)
+    ref = ref_runner.load_model(ref_runner.kernels / level / f"{name}.py")(*inits)
+    ref = ref.to(dtype).eval()
+    model = mlir_runner.load_model(mlir_runner.kernels / level / f"{name}.py")(*inits)
+    model = model.to(dtype).eval()
+    assert copy_model_weights(ref, model)
+    return ref, model
+
+
+def _error(out, ref):
+    out, ref = out.double(), ref.double()
+    return ((out - ref).abs().max() / ref.abs().max()).item()
+
+
+@pytest.mark.parametrize(
+    "key",
+    [
+        "level2/66_Matmul_Dropout_Softmax",
+        "level2/84_Gemm_BatchNorm_Scaling_Softmax",
+        "level2/99_Matmul_GELU_Softmax",
+    ],
+)
+def test_softmax_over_partial_last_chunk(key):
+    """130x1001x515 f32, where 66 first failed: the softmax over 515 columns
+    runs in 128-column chunks, and the zero padding of the partial last one
+    entered the row maxima and sums (0.18 x max|ref| off)."""
+    inits = (1001, 515, 0.2) if key.startswith("level2/66_") else (1001, 515)
+    ref, model = _pair(key, inits, torch.float32)
+    torch.manual_seed(0)
+    x = torch.rand(130, 1001)
+    with torch.no_grad():
+        assert _error(model(x), ref(x)) < 1e-4
+
+
+@pytest.mark.parametrize(
+    "key",
+    [
+        "level2/66_Matmul_Dropout_Softmax",
+        "level2/84_Gemm_BatchNorm_Scaling_Softmax",
+        "level2/99_Matmul_GELU_Softmax",
+    ],
+)
+def test_softmax_over_one_column(key):
+    """OUT_FEATURES = 1: the chunked softmax kernels did not compile
+    (ControlFlowTensorMismatch); a softmax over one column is 1."""
+    inits = (32, 1, 0.2) if key.startswith("level2/66_") else (32, 1)
+    ref, model = _pair(key, inits, torch.float32)
+    x = torch.rand(5, 32)
+    with torch.no_grad():
+        assert torch.equal(model(x), ref(x))
+
+
+def test_matmul_dropout_softmax_needs_eval_mode():
+    """AI-bench runs models in eval mode, where dropout is the identity;
+    random training masks cannot match the reference, so they are refused."""
+    _, model = _pair("level2/66_Matmul_Dropout_Softmax", (32, 32, 0.2), torch.float32)
+    with pytest.raises(ValueError, match="eval mode"):
+        model.train()(torch.rand(2, 32))
+
+
+@pytest.mark.parametrize(
+    ("m", "k", "n", "pool", "scale", "dtype"),
+    [
+        (130, 1001, 515, 16, 2.0, torch.float32),  # partial last window dropped
+        (130, 1001, 515, 16, 2.0, torch.bfloat16),  # odd K: blocked bf16 GEMM
+        (100, 512, 301, 3, -1.5, torch.float32),  # window of 3, negative scale
+        (64, 512, 512, 16, 2.0, torch.bfloat16),  # AMX VNNI path
+    ],
+)
+def test_matmul_avgpool_pooled_weights(m, k, n, pool, scale, dtype):
+    """98 folds the average pool into the weights (window means of W's rows
+    and of b, W' rounded once to the input dtype): checked against the
+    reference and against its fp64 result."""
+    ref, model = _pair(
+        "level2/98_Matmul_AvgPool_GELU_Scale_Max", (k, n, pool, scale), dtype
+    )
+    torch.manual_seed(0)
+    x = torch.rand(m, k).to(dtype)
+    with torch.no_grad():
+        out = model(x)
+        expected = ref(x)
+        exact = ref.double()(x.double())
+    if dtype is torch.float32:
+        assert _error(out, expected) < 1e-5
+    else:
+        # bf16: no further from the fp64 result than the reference is.
+        assert _error(out, exact) <= max(_error(expected, exact), 4e-3)
+
+
+def test_matmul_avgpool_pooled_weights_follow_updates():
+    """The pooled weights are rebuilt when the parameters change, in place or
+    through ``load_state_dict``."""
+    key = "level2/98_Matmul_AvgPool_GELU_Scale_Max"
+    ref, model = _pair(key, (64, 64, 8, 2.0), torch.float32)
+    x = torch.rand(4, 64)
+    with torch.no_grad():
+        model(x)
+        model.matmul.weight.mul_(-0.5)
+        ref.matmul.weight.mul_(-0.5)
+        assert _error(model(x), ref(x)) < 1e-5
+        ref.matmul.bias.add_(0.25)
+        model.load_state_dict(ref.state_dict())
+        assert _error(model(x), ref(x)) < 1e-5
