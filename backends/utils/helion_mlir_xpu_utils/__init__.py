@@ -40,9 +40,11 @@ from .matmul import matmul
 from .matmul import matmul_split_k
 from .matmul import pad_k
 from .normalization import REDUCTION_BLOCKS
+from .normalization import ROW_SEGMENT_COLS
 from .normalization import l1_norm
 from .normalization import l2_norm
 from .normalization import log_softmax
+from .normalization import row_segments
 from .normalization import softmax
 
 __all__ = [
@@ -56,6 +58,7 @@ __all__ = [
     "LINEAR_BLOCKS",
     "LINEAR_SKINNY_BLOCKS",
     "REDUCTION_BLOCKS",
+    "ROW_SEGMENT_COLS",
     "attention",
     "elu",
     "hardsigmoid",
@@ -76,6 +79,7 @@ __all__ = [
     "matmul_split_k",
     "pad_k",
     "relu",
+    "row_segments",
     "selu",
     "sigmoid",
     "softmax",
