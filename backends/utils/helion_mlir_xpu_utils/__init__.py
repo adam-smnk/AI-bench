@@ -32,9 +32,13 @@ from .linear import linear_subtract_multiply_relu
 from .linear import linear_swish_divide_clamp_tanh_clamp
 from .linear import linear_swish_scaling
 from .matmul import GEMM_BLOCKS
+from .matmul import GEMM_SMALL_K
+from .matmul import GEMM_SPLIT_K
 from .matmul import GEMM_SQUARE
 from .matmul import GEMM_STANDARD
 from .matmul import matmul
+from .matmul import matmul_split_k
+from .matmul import pad_k
 from .normalization import REDUCTION_BLOCKS
 from .normalization import l1_norm
 from .normalization import l2_norm
@@ -45,6 +49,8 @@ __all__ = [
     "ATTENTION_BLOCKS",
     "ELEMENTWISE_BLOCKS",
     "GEMM_BLOCKS",
+    "GEMM_SMALL_K",
+    "GEMM_SPLIT_K",
     "GEMM_SQUARE",
     "GEMM_STANDARD",
     "LINEAR_BLOCKS",
@@ -67,6 +73,8 @@ __all__ = [
     "linear_swish_scaling",
     "log_softmax",
     "matmul",
+    "matmul_split_k",
+    "pad_k",
     "relu",
     "selu",
     "sigmoid",
