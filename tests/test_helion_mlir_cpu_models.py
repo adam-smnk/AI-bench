@@ -377,7 +377,16 @@ def test_sdpa_cheap_exp_accuracy():
 
 
 @pytest.mark.parametrize(
-    "shape", [(1, 4, 64, 64), (1, 4, 129, 65), (1, 2, 33, 17), (1, 4, 1024, 128)]
+    "shape",
+    [
+        (1, 4, 64, 64),
+        (1, 4, 129, 65),
+        (1, 2, 33, 17),
+        (1, 4, 1024, 128),
+        (1, 2, 65, 7),
+        (1, 2, 64, 100),
+        (1, 2, 129, 161),
+    ],
 )
 @pytest.mark.parametrize("gain", [1.0e-2, 1.0, 16.0])
 def test_sdpa_bf16_matches_fp64(shape, gain):
@@ -394,6 +403,132 @@ def test_sdpa_bf16_matches_fp64(shape, gain):
         torch.nn.functional.scaled_dot_product_attention(q, k, v), ref
     )
     assert _error(model(q, k, v), ref) < max(2.0 * torch_error, 6e-3)
+
+
+# Aborted LLVM on an X86 bf16 masked load of 32k+1 elements (LegalizeDAG): a
+# softmax's rows reach the same load. In a process of its own: without the fix
+# the abort kills the whole pytest run.
+@pytest.mark.parametrize(("m", "n"), [(65, 577), (1025, 1089)])
+def test_softmax_bf16_ragged_rows_32k_plus_1(m, n):
+    code = f"""
+import torch
+from helion_mlir_cpu_utils import softmax
+torch.manual_seed(2)
+x = torch.randn({m}, {n}).bfloat16()
+out, ref = softmax(x).double(), x.double().softmax(-1)
+assert ((out - ref).abs().max() / ref.abs().max()) < 6e-3
+"""
+    done = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
+    assert done.returncode == 0, done.stderr[-2000:]
+
+
+# Below 32 keys, one column and odd shapes stay off AMX or masked: right values.
+@pytest.mark.parametrize(
+    "shape", [(1, 2, 31, 64), (1, 2, 2, 1), (1, 2, 16, 33), (1, 2, 33, 7), (1, 2, 48, 7)]
+)
+def test_sdpa_bf16_small_shapes_match_fp64(shape):
+    model = _sdpa_module().Model()
+    torch.manual_seed(3)
+    q, k, v = (torch.randn(shape).bfloat16() for _ in range(3))
+    ref = torch.nn.functional.scaled_dot_product_attention(
+        q.double(), k.double(), v.double()
+    )
+    assert _error(model(q, k, v), ref) < 8e-3
+
+
+# D not a multiple of 32 was about 80x behind torch (765 ms vs 9.37 at
+# (4, 32, 2048, 66)): partial tiles of D left every contraction off AMX, in
+# masked per-element code. Results were right, so the operands' padding is what's
+# checked here, AMX below, then the results at the same shapes.
+@pytest.mark.parametrize(
+    ("shape", "padded"), [((4, 32, 2048, 66), 96), ((32, 32, 512, 100), 128)]
+)
+def test_sdpa_bf16_unaligned_head_dim_is_padded_for_amx(shape, padded):
+    from helion_mlir_backend import generate_mlir
+
+    module = _sdpa_module()
+    torch.manual_seed(5)
+    q, k, v = (torch.randn(shape).bfloat16() for _ in range(3))
+    kernel, args = module._call(q, k, v)
+    ir = str(generate_mlir(kernel, list(args)))
+    pads = [line for line in ir.splitlines() if "} : tensor<" in line]
+    assert len(pads) == 3 and all(f"x{padded}xbf16>" in line for line in pads)
+    ref = torch.nn.functional.scaled_dot_product_attention(
+        q.double(), k.double(), v.double()
+    )
+    torch_error = _error(
+        torch.nn.functional.scaled_dot_product_attention(q, k, v), ref
+    )
+    assert _error(kernel(*args).view(shape), ref) < max(2.0 * torch_error, 6e-3)
+
+
+def _amx_contractions(kernel, args):
+    """The ``x86.amx.tile_mulf`` and leftover ``vector.contract`` ops after the
+    x86 vectorization stage of ``kernel``'s CPU pipeline, AMX forced on."""
+    from lighthouse.execution.target import TargetInfo
+    from lighthouse.pipeline.driver import BackendDriver
+    from mlir import ir
+
+    from helion_mlir_backend import generate_mlir
+    from helion_mlir_backend._compiler.execution import inline_module
+    from helion_mlir_backend._compiler.targets.cpu import pipeline_descriptor
+
+    module = generate_mlir(kernel, list(args))
+    host = [f for f in TargetInfo.host().features if not f.startswith("amx")]
+    features = [*host, "amx_tile", "amx_int8", "amx_bf16"]
+    with (
+        TargetInfo.override(features=features),
+        module.context,
+        ir.Location.unknown(),
+    ):
+        inline_module(module)
+        driver = BackendDriver(
+            module, kernel.fn.__name__, result_to_args=False, benchmark=False
+        )
+        driver.add_stage(pipeline_descriptor("opt"))
+        for stage in driver.stages:
+            module = stage.apply(module)
+            text = str(module)
+            if "x86.amx.tile_mulf" in text:
+                return text.count("x86.amx.tile_mulf"), text.count("vector.contract")
+    return 0, str(module).count("vector.contract")
+
+
+# The AMX gate of the shapes that ran masked: every contraction reaches AMX,
+# with no masked key tile (D padded, S dividing its tiles) or some for the tail.
+@pytest.mark.parametrize(
+    ("shape", "all_on_amx"),
+    [
+        ((4, 32, 2048, 66), True),
+        ((32, 32, 512, 100), True),
+        ((2, 2, 96, 64), True),
+        ((32, 32, 100, 64), False),
+        ((2, 2, 100, 64), False),
+        ((1, 2, 129, 161), False),
+    ],
+)
+def test_sdpa_bf16_contractions_reach_amx(shape, all_on_amx):
+    q, k, v = (torch.zeros(shape, dtype=torch.bfloat16) for _ in range(3))
+    kernel, args = _sdpa_module()._call(q, k, v)
+    dots, left = _amx_contractions(kernel, args)
+    assert dots > 0
+    assert left == 0 or not all_on_amx
+
+
+# The padded columns of D are computed, not stored: NaNs and -inf in the last
+# real column act as in fp64.
+def test_sdpa_bf16_unaligned_head_dim_nonfinite():
+    model = _sdpa_module().Model()
+    q, k, v = _sdpa_nonfinite_inputs((1, 2, 64, 100))
+    q[0, 0, 3, 99] = float("nan")
+    out = model(q, k, v)
+    assert _nan_rows(out) == 1
+    assert out[0, 0, 3].double().isnan().any()
+    q, k, v = _sdpa_nonfinite_inputs((1, 2, 64, 100))
+    q[0, 0, 3, 99] = float("-inf")
+    out = model(q, k, v)
+    assert _nan_rows(out) == 0
+    assert out[0, 0, 3].double().abs().max() == 0
 
 
 @pytest.mark.parametrize("operand", ["q", "k", "v"])

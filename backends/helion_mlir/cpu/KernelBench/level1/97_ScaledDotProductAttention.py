@@ -5,7 +5,6 @@ import helion.language as hl
 import helion_mlir_backend  # noqa: F401
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 # Growth of a row maximum (in scaled logits) below which the stale maximum is
 # kept: exponentials stay below e^8, well within f32 and bf16 range.
@@ -57,6 +56,8 @@ def _attention(
     v: torch.Tensor,
     scale: hl.constexpr,
     vnni: hl.constexpr,
+    rows: hl.constexpr,
+    padded_dim: hl.constexpr,
 ) -> torch.Tensor:
     """Softmax attention of ``[BH, S, D]`` heads with logits scaled by ``scale``,
     online over key blocks: the running row maxima rescale the sums and the
@@ -66,49 +67,99 @@ def _attention(
     hl.specialize(dim)
     out = torch.empty_like(q)
     for h in hl.grid(heads):
-        for tile_m in hl.tile(seq):
-            q_tile = q[h, tile_m, :]
-            # -FLT_MAX, below any finite score. Finite: Helion's value range
-            # analysis of the growth takes -inf - -inf.
-            top = hl.full([tile_m], -3.4028234663852886e38, dtype=torch.float32)
-            total = hl.zeros([tile_m], dtype=torch.float32)
-            acc = hl.zeros([tile_m, dim], dtype=torch.float32)
-            for tile_n in hl.tile(seq):
-                scores = hl.zeros([tile_m, tile_n], dtype=torch.float32)
-                scores = scores + _dot_nt(q_tile, k[h, tile_n, :], vnni)
-                maxima = torch.amax(scores, dim=-1) * scale
-                # Not "> threshold": a NaN row must open this too, else every
-                # other row of the block keeps its stale top and overflows.
-                if torch.logical_not(torch.amax(maxima - top) <= _RESCALE_THRESHOLD):
-                    new_top = torch.maximum(top, maxima)
-                    alpha = torch.exp(top - new_top)
-                    total = total * alpha
-                    acc = acc * alpha[:, None]
-                    top = new_top
-                if vnni:
-                    p = _exp_bf16(scores * scale - top[:, None])
-                else:
-                    p = torch.exp(scores * scale - top[:, None])
-                total = total + p.sum(-1)
-                acc = acc + _dot_nn(p.to(q.dtype), v[h, tile_n, :], vnni)
-            # A row with no weight at all (all scores -inf) is 0, not 0 / 0;
-            # too small to change a sum of weights, whose largest is near 1.
-            out[h, tile_m, :] = (acc / (total[:, None] + 1.0e-37)).to(q.dtype)
+        # Tiles up to rows and padded_dim, past the operands' ends: a load there
+        # reads zeros, which change no dot product and no other row, a store
+        # there is dropped.
+        for tile_m in hl.tile(int(rows)):
+            for tile_d in hl.tile(int(padded_dim)):
+                q_tile = q[h, tile_m, tile_d]
+                # -FLT_MAX, below any finite score. Finite: Helion's value range
+                # analysis of the growth takes -inf - -inf.
+                top = hl.full([tile_m], -3.4028234663852886e38, dtype=torch.float32)
+                total = hl.zeros([tile_m], dtype=torch.float32)
+                acc = hl.zeros([tile_m, tile_d], dtype=torch.float32)
+                for tile_n in hl.tile(seq):
+                    scores = hl.zeros([tile_m, tile_n], dtype=torch.float32)
+                    scores = scores + _dot_nt(q_tile, k[h, tile_n, tile_d], vnni)
+                    maxima = torch.amax(scores, dim=-1) * scale
+                    # Not "> threshold": a NaN row must open this too, else every
+                    # other row of the block keeps its stale top and overflows.
+                    if torch.logical_not(
+                        torch.amax(maxima - top) <= _RESCALE_THRESHOLD
+                    ):
+                        new_top = torch.maximum(top, maxima)
+                        alpha = torch.exp(top - new_top)
+                        total = total * alpha
+                        acc = acc * alpha[:, None]
+                        top = new_top
+                    if vnni:
+                        p = _exp_bf16(scores * scale - top[:, None])
+                    else:
+                        p = torch.exp(scores * scale - top[:, None])
+                    total = total + p.sum(-1)
+                    acc = acc + _dot_nn(p.to(q.dtype), v[h, tile_n, tile_d], vnni)
+                # A row with no weight at all (all scores -inf) is 0, not 0 / 0;
+                # too small to change a sum of weights, whose largest is near 1.
+                out[h, tile_m, tile_d] = (acc / (total[:, None] + 1.0e-37)).to(q.dtype)
     return out
 
 
-_KERNELS: dict[tuple[int, int], helion.Kernel] = {}
+_KERNELS: dict[tuple[int, int, int], helion.Kernel] = {}
 
 
-def _kernel(block_m: int, block_n: int) -> helion.Kernel:
-    key = (block_m, block_n)
+def _kernel(block_m: int, block_d: int, block_n: int) -> helion.Kernel:
+    key = (block_m, block_d, block_n)
     if key not in _KERNELS:
         _KERNELS[key] = helion.kernel(
             _attention,
             backend="mlir",
-            config=helion.Config(block_sizes=[block_m, block_n]),
+            config=helion.Config(block_sizes=[block_m, block_d, block_n]),
         )
     return _KERNELS[key]
+
+
+def _call(Q: torch.Tensor, K: torch.Tensor, V: torch.Tensor) -> tuple:
+    """The kernel of ``[B, H, S, D]`` operands and its arguments."""
+    b, h, s, d = Q.shape
+    heads = b * h
+    scale = 1.0 / math.sqrt(d)
+    # bf16 runs on AMX, its operands in VNNI layout: pairs along D and along
+    # the key block. A sequence of one forms no pair of keys, and one padded
+    # column aborts LLVM (a masked load of one lane): plain bf16 dots.
+    vnni = Q.dtype == torch.bfloat16 and s >= 2 and d >= 2
+    # AMX dots whole register tiles: D's one tile and the query tiles are padded
+    # to multiples of 32, and key tiles rounded down to one, but a last partial
+    # one, which is masked. Partial, a contraction falls off AMX into
+    # per-element code (about 100x slower at S512 D100, 18x at S100 D64, EMR).
+    block_d = (d + 31) // 32 * 32 if vnni else d
+    # Tall query blocks pack each K/V block for many rows; swept on EMR
+    # (S2048 D128, ms: 128 rows 13.1, 256 12.3, 512 11.8, 1024 12.1).
+    block_m = 512 if block_d <= 128 else 256
+    rows = s
+    if not vnni:
+        block_m = min(s, block_m)
+    else:
+        # Tiles of equal rows, so that padding costs about 32 rows per tile at
+        # most, not most of a tile.
+        padded_s = (s + 31) // 32 * 32
+        tiles = -(-padded_s // block_m)
+        block_m = (-(-padded_s // tiles) + 31) // 32 * 32
+        rows = tiles * block_m
+    # VNNI pairs along the key block need it even: a block of at least S is
+    # all of S, so an odd S gets one less and a masked tail. Below 32 keys no
+    # register tile fits: masked, but few.
+    block_n = min(s - s % 2 if vnni else s, 128 if block_d <= 64 else 64)
+    if vnni and s >= 32:
+        block_n = block_n // 32 * 32
+    return _kernel(block_m, block_d, block_n), (
+        Q.reshape(heads, s, d),
+        K.reshape(heads, s, d),
+        V.reshape(heads, s, d),
+        hl.constexpr(scale),
+        hl.constexpr(vnni),
+        hl.constexpr(rows),
+        hl.constexpr(block_d),
+    )
 
 
 class Model(nn.Module):
@@ -118,29 +169,5 @@ class Model(nn.Module):
     def forward(
         self, Q: torch.Tensor, K: torch.Tensor, V: torch.Tensor
     ) -> torch.Tensor:
-        b, h, s, d = Q.shape
-        heads = b * h
-        scale = 1.0 / math.sqrt(d)
-        # bf16 runs on AMX, its operands in VNNI layout: pairs along D and along
-        # the key block. A sequence of one forms no pair of keys: plain bf16 dots.
-        vnni = Q.dtype == torch.bfloat16 and s >= 2
-        # The VNNI pairs along D need it even: an odd D gets one zero column,
-        # which changes no dot product.
-        dim = d + d % 2 if vnni else d
-        if dim != d:
-            Q, K, V = (F.pad(t, (0, dim - d)) for t in (Q, K, V))
-        # Tall query blocks pack each K/V block for many rows; swept on EMR
-        # (S2048 D128, ms: 128 rows 13.1, 256 12.3, 512 11.8, 1024 12.1).
-        block_m = min(s, 512 if dim <= 128 else 256)
-        # VNNI pairs along the key block need it even: a block of at least S is
-        # all of S, so an odd S gets one less and a masked tail.
-        block_n = min(s - s % 2 if vnni else s, 128 if dim <= 64 else 64)
-        out = _kernel(block_m, block_n)(
-            Q.reshape(heads, s, dim),
-            K.reshape(heads, s, dim),
-            V.reshape(heads, s, dim),
-            hl.constexpr(scale),
-            hl.constexpr(vnni),
-        )
-        out = out.view(b, h, s, dim)
-        return out if dim == d else out[..., :d].contiguous()
+        kernel, args = _call(Q, K, V)
+        return kernel(*args).view(Q.shape)
