@@ -9,6 +9,8 @@ leave the RNG where the reference does (inputs are drawn after the model).
 The XPU models are checked too, built on the CPU.
 """
 
+import os
+import subprocess
 import sys
 
 import pytest
@@ -437,3 +439,280 @@ def test_sdpa_bf16_nan_row_keeps_rescale_open_for_growing_row():
     assert int(out.isnan().sum()) == 64
     finite = ~ref.isnan()
     assert (out[finite] - ref[finite]).abs().max() < 2e-2 * ref[finite].abs().max()
+
+
+_GEMM_SUM = "level2/14_Gemm_Divide_Sum_Scaling"
+
+
+@pytest.mark.parametrize(
+    ("m", "k", "n", "scale"),
+    [
+        (64, 256, 64, 1.5),  # whole tiles
+        (33, 65, 47, -1.5),  # ragged everywhere, negative scale
+        (100, 129, 301, 2.0),  # more outputs than inputs
+        (5, 31, 3, 1.5),  # below every block
+        (1, 64, 1, 1.5),  # one row, one output
+    ],
+)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
+def test_gemm_sum_as_dot_product(m, k, n, scale, dtype):
+    """14 computes ``x · sum_n(W)``, not the GEMM and the row sum: checked
+    against its fp64 result, against the reference and against the GEMM form."""
+    ref, model = _pair(_GEMM_SUM, (k, n, scale), dtype)
+    torch.manual_seed(0)
+    x = torch.rand(m, k).to(dtype)
+    with torch.no_grad():
+        out = model(x)
+        expected = ref(x)
+        gemm = model._gemm_sum(x)
+        exact = ref.double()(x.double())
+    assert out.shape == expected.shape == (m, 1) and out.dtype == dtype
+    if dtype is torch.float32:
+        assert _error(out, expected) < 1e-5
+        assert _error(out, gemm) < 1e-5
+    else:
+        # bf16: one rounding, so half an ulp of the largest result at most.
+        assert _error(out, exact) <= 2.0**-8
+        assert _error(out, exact) <= max(_error(expected, exact), _error(gemm, exact))
+
+
+def test_gemm_sum_follows_weight_changes():
+    """The summed weight is never stale: not after in-place ops or
+    ``load_state_dict``, and not after ``.data.copy_()``, which leaves
+    ``_version`` unchanged."""
+    ref, model = _pair(_GEMM_SUM, (64, 64, 1.5), torch.float32)
+    x = torch.rand(4, 64)
+    with torch.no_grad():
+        model(x)
+        model.weight.mul_(-0.5)
+        ref.weight.mul_(-0.5)
+        assert _error(model(x), ref(x)) < 1e-5
+        ref.weight.add_(0.25)
+        model.load_state_dict(ref.state_dict())
+        assert _error(model(x), ref(x)) < 1e-5
+        version = model.weight._version
+        new = torch.randn_like(model.weight)
+        model.weight.data.copy_(new)
+        ref.weight.data.copy_(new)
+        assert model.weight._version == version
+        assert _error(model(x), ref(x)) < 1e-5
+
+
+@pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
+def test_gemm_sum_guard_path_follows_weight_changes(dtype):
+    """The recomputation of an overflowing result does not reuse a packed weight
+    either: its sign follows ``.data``, which leaves ``_version`` unchanged."""
+    ref, model = _pair(_GEMM_SUM, (64, 64, 1.5), dtype)
+    x = torch.full((8, 64), 1e-5).to(dtype)
+    with torch.no_grad():
+        for value in (1e37, -1e37, 1e37):
+            model.weight.data.fill_(value)
+            ref.weight.data.fill_(value)
+            out, expected = model(x), ref(x)
+            assert torch.isfinite(out).all() and torch.isfinite(expected).all()
+            assert _error(out, expected) < 2.0**-6
+
+
+@pytest.mark.parametrize(
+    ("k", "threads"),
+    [
+        (577, 1),
+        (641, 1),
+        (1089, 1),
+        (1153, 1),
+        (4161, 8),
+        (4225, 8),
+        (32833, 64),
+        (32897, 64),
+    ],
+)
+def test_gemm_sum_one_output_row_runs(k, threads):
+    """Regression: a kernel for the column sum of a one-row bf16 weight with a
+    partial column tile aborted LLVM's x86 code generation."""
+    code = (
+        "import torch\n"
+        "from helion_mlir_cpu_utils import column_sum\n"
+        f"x = torch.rand(1, {k}).to(torch.bfloat16)\n"
+        "assert torch.equal(column_sum(x), x[0].float())\n"
+    )
+    env = {
+        **os.environ,
+        "OMP_NUM_THREADS": str(threads),
+        "PYTHONPATH": os.pathsep.join(sys.path),
+    }
+    result = subprocess.run(
+        [sys.executable, "-c", code], env=env, capture_output=True, text=True
+    )
+    assert result.returncode == 0, result.stderr[-2000:]
+
+
+def test_gemm_sum_falls_back_for_other_dtypes():
+    """A weight of another dtype than the input takes the GEMM and the row sum,
+    which round the weight to the input's dtype."""
+    ref, model = _pair(_GEMM_SUM, (64, 64, 1.5), torch.float32)
+    x = torch.rand(4, 64).to(torch.bfloat16)
+    called = []
+    gemm_sum = model._gemm_sum
+    model._gemm_sum = lambda v: called.append(1) or gemm_sum(v)
+    with torch.no_grad():
+        out = model(x)
+        expected = ref.to(torch.bfloat16)(x)
+    assert called and out.dtype == torch.bfloat16
+    assert _error(out, expected) < 0.02
+
+
+_ROW_SUM_RAGGED = """
+import sys
+import torch
+from helion_mlir_cpu_utils import row_sum
+m, n = int(sys.argv[1]), int(sys.argv[2])
+torch.manual_seed(0)
+x = torch.rand(m, n).to(torch.bfloat16)
+exact = x.double().sum(1, keepdim=True)
+assert (row_sum(x).double() - exact).abs().max() / exact.abs().max() < 2.0**-8
+"""
+
+
+@pytest.mark.parametrize(
+    ("m", "n", "threads"), [(33, 65, 8), (33, 129, 8), (1025, 65, 64)]
+)
+def test_row_sum_ragged_rows_and_8k_plus_1_columns(m, n, threads):
+    """Regression: bf16 row sums with partial row tiles and 8k+1 > 32 columns
+    aborted LLVM's x86 code generation, hence the separate process."""
+    env = {
+        **os.environ,
+        "OMP_NUM_THREADS": str(threads),
+        "PYTHONPATH": os.pathsep.join(sys.path),
+    }
+    result = subprocess.run(
+        [sys.executable, "-c", _ROW_SUM_RAGGED, str(m), str(n)],
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr[-2000:]
+
+
+_ROW_DOT_RAGGED = """
+import sys
+import torch
+from helion_mlir_cpu_utils import row_dot
+m, n = int(sys.argv[1]), int(sys.argv[2])
+torch.manual_seed(0)
+x = torch.rand(m, n).to(torch.bfloat16)
+v = torch.rand(n)
+exact = x.double() @ v.double()
+out = row_dot(x, v)[:, 0].double()
+assert (out - exact).abs().max() / exact.abs().max() < 2.0**-8
+"""
+
+
+@pytest.mark.parametrize(
+    ("m", "n", "threads"), [(33, 65, 8), (33, 129, 8), (1025, 65, 64)]
+)
+def test_row_dot_ragged_rows_and_8k_plus_1_columns(m, n, threads):
+    """The shapes of the row sum regression: partial row tiles abort LLVM's x86
+    code generation here too, hence the separate process."""
+    env = {
+        **os.environ,
+        "OMP_NUM_THREADS": str(threads),
+        "PYTHONPATH": os.pathsep.join(sys.path),
+    }
+    result = subprocess.run(
+        [sys.executable, "-c", _ROW_DOT_RAGGED, str(m), str(n)],
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr[-2000:]
+
+
+@pytest.mark.parametrize(
+    ("values", "weights"),
+    [
+        pytest.param(1e-5, 1e37, id="summed-weight-overflows"),
+        pytest.param((1e20, -1e20), 1e17, id="partial-dot-overflows"),
+    ],
+)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
+def test_gemm_sum_finite_inputs_stay_finite(values, weights, dtype):
+    """The reordered sums overflow where the GEMM does not: 14 recomputes."""
+    ref, model = _pair(_GEMM_SUM, (64, 64, 1.0), dtype)
+    row = torch.tensor(values).reshape(-1)
+    x = row.repeat(64, 64 // row.numel()).to(dtype)
+    with torch.no_grad():
+        model.weight.fill_(weights)
+        ref.weight.fill_(weights)
+        out = model(x)
+        expected = ref(x)
+    assert torch.isfinite(out).all()
+    assert torch.equal(out, model._gemm_sum(x))
+    assert torch.isfinite(expected).all()
+
+
+def test_gemm_sum_infinite_input_gives_the_references_nan():
+    ref, model = _pair(_GEMM_SUM, (64, 64, 1.5), torch.float32)
+    torch.manual_seed(0)
+    x = torch.rand(64, 64)
+    x[3, 5] = torch.inf
+    with torch.no_grad():
+        out = model(x)
+        expected = ref(x)
+    assert torch.equal(out.isnan(), expected.isnan()) and out[3].isnan()
+
+
+@pytest.mark.parametrize(
+    ("x_shape", "n"),
+    [
+        pytest.param((16,), 8, id="1-D"),
+        pytest.param((2, 3, 16), 8, id="3-D"),
+        pytest.param((2, 3, 4, 16), 8, id="4-D"),
+        pytest.param((8, 16), 0, id="no-outputs"),
+        pytest.param((0, 16), 8, id="no-rows"),
+    ],
+)
+def test_gemm_sum_other_shapes_run_eagerly(x_shape, n):
+    ref, model = _pair(_GEMM_SUM, (16, n, 1.5), torch.float32)
+    torch.manual_seed(0)
+    x = torch.rand(*x_shape)
+    with torch.no_grad():
+        if x.dim() == 1:
+            # The reference's sum has no dim 1 for a 1-D product: the same error.
+            with pytest.raises(IndexError):
+                ref(x)
+            with pytest.raises(IndexError):
+                model(x)
+            return
+        out = model(x)
+        expected = ref(x)
+    assert torch.equal(out, expected)
+
+
+@pytest.mark.parametrize("dtype", [torch.float64, torch.float16])
+def test_gemm_sum_other_float_dtypes_run_eagerly(dtype):
+    ref, model = _pair(_GEMM_SUM, (16, 8, 1.5), dtype)
+    torch.manual_seed(0)
+    x = torch.rand(4, 16).to(dtype)
+    with torch.no_grad():
+        out = model(x)
+        expected = ref(x)
+    assert out.dtype == dtype and torch.equal(out, expected)
+
+
+@pytest.mark.parametrize("dtype", [torch.int32, torch.uint8])
+def test_gemm_sum_integer_inputs_raise_as_the_reference(dtype):
+    ref, model = _pair(_GEMM_SUM, (16, 8, 1.5), torch.float32)
+    x = torch.ones(4, 16, dtype=dtype)
+    with torch.no_grad(), pytest.raises(RuntimeError):
+        ref(x)
+    with torch.no_grad(), pytest.raises(RuntimeError):
+        model(x)
+
+
+def test_row_dot_rejects_bad_operands():
+    from helion_mlir_cpu_utils import row_dot
+
+    with pytest.raises(ValueError, match="row_dot"):
+        row_dot(torch.ones(4, 8), torch.ones(4))
+    with pytest.raises(ValueError, match="f32 vector"):
+        row_dot(torch.ones(4, 8), torch.ones(8, dtype=torch.bfloat16))
