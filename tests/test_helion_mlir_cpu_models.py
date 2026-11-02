@@ -288,3 +288,152 @@ def test_matmul_avgpool_pooled_weights_follow_updates():
         ref.matmul.bias.add_(0.25)
         model.load_state_dict(ref.state_dict())
         assert _error(model(x), ref(x)) < 1e-5
+
+
+def _sdpa_module():
+    _, mlir = _runners()
+    path = mlir.kernels / "level1" / "97_ScaledDotProductAttention.py"
+    return import_kernel_from_path(path)
+
+
+def test_sdpa_cheap_exp_accuracy():
+    x = torch.linspace(-40.0, 8.0, 200001, dtype=torch.float32)
+    out = _sdpa_module()._exp_bf16(x).double()
+    ref = x.double().exp()
+    near = x >= -8.0
+    assert ((out - ref) / ref)[near].abs().max() < 8e-4
+    assert (out - ref)[~near].abs().max() < 3e-7
+    assert out.min() > 0.0
+
+
+@pytest.mark.parametrize(
+    "shape", [(1, 4, 64, 64), (1, 4, 129, 65), (1, 2, 33, 17), (1, 4, 1024, 128)]
+)
+@pytest.mark.parametrize("gain", [1.0e-2, 1.0, 16.0])
+def test_sdpa_bf16_matches_fp64(shape, gain):
+    """The cheap exponential at bf16: as close to fp64 as torch's bf16 SDPA,
+    from nearly uniform weights to rows of few large ones; ragged shapes."""
+    model = _sdpa_module().Model()
+    torch.manual_seed(11)
+    q, k, v = (torch.rand(shape) for _ in range(3))
+    q, k, v = (q * gain).bfloat16(), (k * gain).bfloat16(), v.bfloat16()
+    ref = torch.nn.functional.scaled_dot_product_attention(
+        q.double(), k.double(), v.double()
+    )
+    torch_error = _error(
+        torch.nn.functional.scaled_dot_product_attention(q, k, v), ref
+    )
+    assert _error(model(q, k, v), ref) < max(2.0 * torch_error, 6e-3)
+
+
+@pytest.mark.parametrize("operand", ["q", "k", "v"])
+def test_sdpa_bf16_propagates_nan(operand):
+    model = _sdpa_module().Model()
+    torch.manual_seed(1)
+    tensors = {n: torch.rand(1, 2, 64, 64).bfloat16() for n in "qkv"}
+    tensors[operand][0, 0, 3, 5] = float("nan")
+    out = model(tensors["q"], tensors["k"], tensors["v"])
+    assert out[0, 0, 3].isnan().any()
+
+
+def _sdpa_nonfinite_inputs(shape):
+    torch.manual_seed(1)
+    return [torch.rand(shape).bfloat16() for _ in range(3)]
+
+
+def _nan_rows(out):
+    return int(out.double().isnan().any(-1).sum())
+
+
+# One NaN in Q is one NaN row, as in fp64: found at both block sizes (a NaN
+# row closed the rescale test for all rows of its block, 64 and 512 rows).
+@pytest.mark.parametrize("shape", [(1, 2, 64, 64), (1, 1, 1024, 128)])
+def test_sdpa_bf16_one_nan_query_is_one_nan_row(shape):
+    model = _sdpa_module().Model()
+    q, k, v = _sdpa_nonfinite_inputs(shape)
+    q[0, 0, 3, 5] = float("nan")
+    out = model(q, k, v)
+    assert _nan_rows(out) == 1
+    assert out[0, 0, 3].double().isnan().any()
+
+
+# A row of all -inf scores has no weights: 0 as in fp64, not the plain mean of
+# V, finite and wrong.
+def test_sdpa_bf16_minus_inf_row_is_not_the_mean_of_v():
+    model = _sdpa_module().Model()
+    q, k, v = _sdpa_nonfinite_inputs((1, 2, 64, 64))
+    q[0, 0, 3, 5] = float("-inf")
+    out = model(q, k, v)
+    assert _nan_rows(out) == 0
+    assert out[0, 0, 3].double().abs().max() == 0
+
+
+def test_sdpa_bf16_minus_inf_key_weighs_nothing():
+    model = _sdpa_module().Model()
+    q, k, v = _sdpa_nonfinite_inputs((1, 2, 64, 64))
+    k[0, 0, 7, 5] = float("-inf")
+    ref = torch.nn.functional.scaled_dot_product_attention(
+        q.double(), k.double(), v.double()
+    )
+    out = model(q, k, v)
+    assert _nan_rows(out) == 0
+    assert _error(out, ref) < 6e-3
+
+
+def test_sdpa_bf16_plus_inf_row_leaves_other_rows():
+    model = _sdpa_module().Model()
+    q, k, v = _sdpa_nonfinite_inputs((1, 1, 64, 64))
+    clean = model(q, k, v).double()
+    q[0, 0, 3, 5] = float("inf")
+    out = model(q, k, v).double()
+    others = [r for r in range(64) if r != 3]
+    assert not out[0, 0, others].isnan().any()
+    assert _error(out[0, 0, others], clean[0, 0, others]) < 6e-3
+
+
+def test_sdpa_bf16_scores_below_any_finite_start():
+    model = _sdpa_module().Model()
+    q, k, v = _sdpa_nonfinite_inputs((1, 1, 64, 64))
+    q, k = (q * -1.0e17).bfloat16(), (k * 1.0e17).bfloat16()
+    ref = torch.nn.functional.scaled_dot_product_attention(
+        q.double(), k.double(), v.double()
+    )
+    assert ref.abs().max() > 0
+    assert _error(model(q, k, v), ref) < 6e-3
+
+
+# +inf in row 0 opens the rescale test once, then inf - inf is NaN there; a NaN
+# row must not close it for row 1, whose scores keep growing past the threshold:
+# with the test closed, row 1 overflows (128 NaNs instead of fp64's 64).
+def test_sdpa_bf16_nan_row_keeps_rescale_open_for_growing_row():
+    s, d, block = 512, 64, 128
+    logits = torch.tensor(
+        [
+            [
+                1.0
+                if r == 0
+                else 120.0 - ((j * 5) % 17) / 2
+                if r == 1 and j >= block
+                else ((j * 3) % 5) / 5
+                for j in range(s)
+            ]
+            for r in range(4)
+        ],
+        dtype=torch.float32,
+    )
+    q, k = torch.zeros(1, 1, s, d), torch.zeros(1, 1, s, d)
+    for r in range(4):
+        q[0, 0, r, r] = 1.0
+        k[0, 0, :, r] = d**0.5 * logits[r]
+    torch.manual_seed(5)
+    v = torch.rand(1, 1, s, d).bfloat16()
+    q, k = q.bfloat16(), k.bfloat16()
+    q[0, 0, 0, 0] = float("inf")
+    out = _sdpa_module().Model()(q, k, v).double()
+    ref = torch.nn.functional.scaled_dot_product_attention(
+        q.double(), k.double(), v.double()
+    )
+    assert out.isnan().equal(ref.isnan())
+    assert int(out.isnan().sum()) == 64
+    finite = ~ref.isnan()
+    assert (out[finite] - ref[finite]).abs().max() < 2e-2 * ref[finite].abs().max()
