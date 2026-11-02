@@ -7,11 +7,9 @@ backend model must therefore draw its parameters exactly like the
 KernelBench reference: same distributions, in the same order, and it must
 leave the RNG where the reference does (inputs are drawn after the model).
 The XPU models are checked too, built on the CPU.
-
-``load_model`` imports every kernel as ``sys.modules["kernel_model"]``, so
-build a model right after loading it: loading a second model replaces the
-module the first one's globals refer to.
 """
+
+import sys
 
 import pytest
 import torch
@@ -20,6 +18,7 @@ from ai_bench.harness import core as ai_hc
 from ai_bench.harness.runner import KernelBenchRunner
 from ai_bench.harness.runner.benchmark_compare import copy_model_weights
 from ai_bench.harness.runner.benchmark_compare import set_all_seeds
+from ai_bench.utils import import_kernel_from_path
 
 pytest.importorskip("helion_mlir_backend")
 
@@ -215,6 +214,64 @@ def test_matmul_avgpool_pooled_weights(m, k, n, pool, scale, dtype):
     else:
         # bf16: no further from the fp64 result than the reference is.
         assert _error(out, exact) <= max(_error(expected, exact), 4e-3)
+
+
+def _load_case(key, spec_type, dtype):
+    _, runner = _runners()
+    level, name = key.split("/")
+    spec = runner.load_spec(runner.specs / level / f"{name}.yaml")
+    variant = next(
+        v for v in ai_hc.expand_variants(spec[spec_type]) if v["dtype"] == dtype
+    )
+    set_all_seeds(123)
+    model = runner.init_model(
+        runner.load_model(runner.kernels / level / f"{name}.py"),
+        variant,
+        runner.get_spec_inits(spec),
+    )
+    return model, ai_hc.get_inputs(variant, runner.get_spec_inputs(spec), device=CPU)
+
+
+# A kernel reading a module global, directly (84) or in an epilogue (12): it
+# compiles on its first call, after the other model was loaded. Same shapes as
+# the run that found this: bench-cpu, bf16, 84 first.
+@pytest.mark.parametrize(
+    "key,spec_type,dtype",
+    [
+        ("level2/84_Gemm_BatchNorm_Scaling_Softmax", "bench-cpu", "bfloat16"),
+        ("level2/12_Gemm_Multiply_LeakyReLU", "ci", "float32"),
+    ],
+)
+def test_kernel_compiles_after_another_model_was_loaded(key, spec_type, dtype):
+    other = "level1/7_Matmul_with_small_K_dimension_"
+    alone, inputs = _load_case(key, spec_type, dtype)
+    with torch.no_grad():
+        expected = alone(*inputs)
+    assert expected.count_nonzero() > 0
+    model, inputs = _load_case(key, spec_type, dtype)
+    later, later_inputs = _load_case(other, "bench-cpu", "bfloat16")
+    with torch.no_grad():
+        assert torch.equal(model(*inputs), expected)
+        later(*later_inputs)
+
+
+def test_each_kernel_load_gets_its_own_module(tmp_path):
+    for parent, value in (("a", 1), ("b", 2)):
+        (tmp_path / parent).mkdir()
+        (tmp_path / parent / "1_kernel-x.py").write_text(f"VALUE = {value}\n")
+    loaded = [
+        import_kernel_from_path(tmp_path / parent / "1_kernel-x.py")
+        for parent in ("a", "b", "a")
+    ]
+    try:
+        assert [m.VALUE for m in loaded] == [1, 2, 1]
+        assert len({m.__name__ for m in loaded}) == 3
+        for module in loaded:
+            assert module.__name__.isidentifier()
+            assert sys.modules[module.__name__] is module
+    finally:
+        for module in loaded:
+            del sys.modules[module.__name__]
 
 
 def test_matmul_avgpool_pooled_weights_follow_updates():
