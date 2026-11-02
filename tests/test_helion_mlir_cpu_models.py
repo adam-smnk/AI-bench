@@ -507,6 +507,54 @@ def test_sdpa_bf16_nan_row_keeps_rescale_open_for_growing_row():
     assert int(out.isnan().sum()) == 64
     finite = ~ref.isnan()
     assert (out[finite] - ref[finite]).abs().max() < 2e-2 * ref[finite].abs().max()
+@pytest.mark.parametrize(
+    ("m", "n", "k", "threads", "expected"),
+    [
+        (1048576, 768, 256, 64, (256, 768, 256)),  # L1/11 bench-cpu
+        (16384, 768, 256, 64, (256, 768, 256)),  # one tile per thread
+        (16320, 768, 256, 64, None),  # fewer tiles than threads
+        (1048320, 768, 256, 64, (256, 768, 256)),
+        (1048321, 768, 256, 64, None),  # a partial row tile
+        (1048576, 760, 256, 64, None),  # partial register tiles
+        (1048576, 768, 264, 64, None),  # a K tail
+        (1048576, 2048, 512, 64, None),  # a 2 MiB B chunk
+        (1048576, 2048, 256, 64, None),  # 128 rows: too few to share
+    ],
+)
+def test_tall_output_tiles(m, n, k, threads, expected, monkeypatch):
+    from helion_mlir_cpu_utils import tall_output_tiles
+
+    monkeypatch.setenv("OMP_NUM_THREADS", str(threads))
+    assert tall_output_tiles(m, n, k) == expected
+
+
+_TENSOR_MATMUL = "level1/11_4D_tensor_matrix_multiplication"
+
+
+@pytest.mark.parametrize(
+    ("b", "i", "j", "inner", "outer"),
+    [
+        (2, 128, 64, 64, 96),  # whole-row tiles on 8 threads
+        (2, 129, 65, 33, 25),  # the default tiles: ragged everywhere
+    ],
+)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
+def test_tensor_matmul_tiles(b, i, j, inner, outer, dtype, monkeypatch):
+    """11's tiles change no value: bit for bit the default tiles' result, and
+    close to the fp64 result."""
+    from helion_mlir_cpu_utils import matmul
+
+    monkeypatch.setenv("OMP_NUM_THREADS", "8")
+    ref, model = _pair(_TENSOR_MATMUL, (), dtype)
+    torch.manual_seed(0)
+    x = torch.rand(b, i, j, inner).to(dtype)
+    y = torch.rand(inner, outer).to(dtype)
+    with torch.no_grad():
+        out = model(x, y)
+        default = matmul(x.reshape(b * i * j, inner), y).view(out.shape)
+        exact = ref.double()(x.double(), y.double())
+    assert torch.equal(out, default)
+    assert _error(out, exact) < (2.0**-7 if dtype is torch.bfloat16 else 1e-5)
 
 
 _GEMM_SUM = "level2/14_Gemm_Divide_Sum_Scaling"
