@@ -1,6 +1,7 @@
 import helion
 import helion.language as hl
 import helion_mlir_backend  # noqa: F401
+from helion_mlir_backend import output_pool
 import torch
 import torch.nn as nn
 
@@ -43,7 +44,7 @@ def _batch_norm_scale_softmax(
     if in_place:
         out = y
     else:
-        out = torch.empty_like(y)
+        out = output_pool.empty_like(y)
     params = (running_mean, running_var, weight, bias)
     for tile_m in hl.tile(m):
         factor = scale[:].to(torch.float32)
