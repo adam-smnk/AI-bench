@@ -27,6 +27,7 @@ def _batch_norm_scale_softmax(
     scale: torch.Tensor,
     eps: hl.constexpr,
     whole: hl.constexpr,
+    in_place: hl.constexpr = hl.constexpr(False),
 ) -> torch.Tensor:
     """Row softmax of ``scale * BatchNorm(y)`` (inference statistics) of
     ``[M, N]``; ``scale`` is ``[1]``. Passes over column chunks: row maxima,
@@ -37,7 +38,12 @@ def _batch_norm_scale_softmax(
     m, n = y.shape
     hl.specialize(n)
     block_n = hl.register_block_size(n)
-    out = torch.empty_like(y)
+    # In place, a tile's row statistics come before its store pass, which reads
+    # each chunk before writing it.
+    if in_place:
+        out = y
+    else:
+        out = torch.empty_like(y)
     params = (running_mean, running_var, weight, bias)
     for tile_m in hl.tile(m):
         factor = scale[:].to(torch.float32)
@@ -105,7 +111,7 @@ class Model(nn.Module):
             # The chunked kernel does not compile for one column. A softmax
             # over one column is 1 (NaN for a NaN or infinite input), as is
             # that of y itself while the affine map keeps finite values finite.
-            return softmax(y)
+            return softmax(y, in_place=True)
         block_n = min(n, 128)
         return _kernel(block_n, rows)(
             y,
@@ -116,4 +122,5 @@ class Model(nn.Module):
             self.scale.view(1),
             hl.constexpr(bn.eps),
             hl.constexpr(n // block_n * block_n),
+            hl.constexpr(True),
         )

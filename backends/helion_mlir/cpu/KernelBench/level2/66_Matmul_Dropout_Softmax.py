@@ -20,4 +20,4 @@ class Model(nn.Module):
         if self.training and self.dropout.p > 0:
             raise ValueError("dropout with p > 0 needs eval mode")
         y, self._linear_cache = linear(x, self.matmul, cache=self._linear_cache)
-        return softmax(y)
+        return softmax(y, in_place=True)

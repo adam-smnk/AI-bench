@@ -27,4 +27,7 @@ class Model(nn.Module):
     def forward(self, x):
         y, self._linear_cache = linear(x, self.fc, cache=self._linear_cache)
         gn = self.gn
+# Not in place: with the output pool it gains nothing, and the kernel's stack
+        # copy costs compile time (3.3 vs 1.9 s). With the pool off, this model takes
+        # about 3.7-4.2 ms under glibc instead of 2.7-3.0.
         return group_norm(y, gn.num_groups, gn.weight, gn.bias, gn.eps, self._epilogue)
