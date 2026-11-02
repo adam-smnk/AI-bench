@@ -19,8 +19,7 @@ from torch import Tensor
 
 ATTENTION_BLOCKS = (1, 1, 512, 64)
 """Flash-attention block sizes ``[batch, head, query rows, K/V rows]`` of the bench
-shape, picked on the Arc B50 for a head dim of 64, with
-``igc_vectorizer="cmp"`` and NaN-ignoring row maxima:
+shape, picked on the Arc B50 for a head dim of 64, with NaN-ignoring row maxima:
 
 - Batch and head blocks 1: each workgroup works on one (batch, head) matrix
   (unit tile dims are folded; the grid is B x H x S/512 = 32x32x1).
@@ -95,7 +94,6 @@ _KERNEL = helion.kernel(
     config=helion.Config(
         block_sizes=list(ATTENTION_BLOCKS),
         xegpu_nan_ignoring_maxima=[True],
-        igc_vectorizer=["cmp"],
     ),
 )
 _OTHER_SHAPES_KERNEL = helion.kernel(
@@ -105,7 +103,6 @@ _OTHER_SHAPES_KERNEL = helion.kernel(
     config=helion.Config(
         block_sizes=list(ATTENTION_OTHER_SHAPES_BLOCKS),
         xegpu_nan_ignoring_maxima=[True],
-        igc_vectorizer=["cmp"],
     ),
 )
 

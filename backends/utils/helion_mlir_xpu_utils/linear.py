@@ -216,13 +216,6 @@ def _linear_swish_divide_clamp_tanh_clamp(
 
 
 _KERNELS: dict[tuple[Callable[..., Tensor], bool], helion.Kernel] = {}
-_VECTORIZER: dict[str, list[str]] = {
-    "_linear_mish_mish": ["cmp"],
-    "_linear_swish_divide_clamp_tanh_clamp": ["cmp"],
-}
-"""``igc_vectorizer`` by kernel: L2 29 and 81 take 6.9 and 3.3 % more device time
-with the vectorizer off, with the same bits under both after other kernels (the backend's
-``test_chosen_kernels_after_other_kernels``)."""
 
 
 def _run(
@@ -250,11 +243,6 @@ def _run(
             config=helion.Config(
                 block_sizes=list(blocks),
                 xegpu_load_tiles=[list(a_load)],
-                **(
-                    {"igc_vectorizer": _VECTORIZER[fn.__name__]}
-                    if fn.__name__ in _VECTORIZER
-                    else {}
-                ),
             ),
         )
     weight = weight.detach().to(x.dtype)

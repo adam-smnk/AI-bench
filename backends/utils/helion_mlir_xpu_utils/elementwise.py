@@ -79,10 +79,6 @@ def block_sizes(shape: torch.Size | tuple[int, ...]) -> tuple[int, ...]:
 
 
 _KERNELS: dict[tuple[Callable[..., Tensor], tuple[int, ...]], helion.Kernel] = {}
-_VECTORIZER: dict[str, list[str]] = {"_softplus_kernel": ["cmp"]}
-"""``igc_vectorizer`` by kernel: Softplus takes 6.3 % more device time with the
-vectorizer off, with the same bits under both after other kernels (the backend's
-``test_chosen_kernels_after_other_kernels``)."""
 
 
 def _run(fn: Callable[..., Tensor], x: Tensor, *constants: object) -> Tensor:
@@ -96,11 +92,6 @@ def _run(fn: Callable[..., Tensor], x: Tensor, *constants: object) -> Tensor:
             static_shapes=True,
             config=helion.Config(
                 block_sizes=list(blocks),
-                **(
-                    {"igc_vectorizer": _VECTORIZER[fn.__name__]}
-                    if fn.__name__ in _VECTORIZER
-                    else {}
-                ),
             ),
         )(fn)
         _KERNELS[fn, blocks] = kernel
