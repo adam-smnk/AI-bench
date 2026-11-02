@@ -83,10 +83,11 @@ class Model(nn.Module):
     stale, as for :func:`linear`'s packed weights.
 
     Config: the pooled GEMM keeps the linear helper's VNNI panels, 64
-    columns at 1024 rows: 8 panels x 8 row tiles of 128 = 64 tiles for
-    64 cores, f32 accumulators of 32 KiB, A rows (2 MiB per tile) from the
-    LLC. EMR, cpu-bench, 1024x512x8192 GEMM alone: 64 columns 0.239 ms
-    (36 TFLOPS), 128 columns 0.243, 256 (too few tiles) 0.325."""
+    columns at 1024 rows on 64 threads (128 on 32, 256 on 56): 8 panels x 8
+    row tiles of 128 = 64 tiles for 64 cores, f32 accumulators of 32 KiB, A
+    rows (2 MiB per tile) from the LLC. EMR, cpu-bench, 1024x512x8192 GEMM
+    alone: 64 columns 0.239 ms (36 TFLOPS), 128 columns 0.243, 256 (too few
+    tiles) 0.325."""
 
     def __init__(self, in_features, out_features, pool_kernel_size, scale_factor):
         super().__init__()

@@ -292,6 +292,74 @@ def test_matmul_avgpool_pooled_weights_follow_updates():
         assert _error(model(x), ref(x)) < 1e-5
 
 
+
+
+@pytest.mark.parametrize(
+    "threads,m,n,k,panel",
+    [
+        # A quarter fewer operand bytes, nothing added: L3/3's layers and others.
+        (64, 1024, 1024, 1024, 256),
+        (64, 1000, 1000, 1000, 256),
+        (64, 1024, 700, 700, 256),
+        (56, 1024, 1024, 1024, 256),
+        (8, 256, 512, 512, 256),
+        (2, 256, 128, 128, 128),
+        (32, 1024, 512, 8192, 128),
+        # The fewest K chunks first (L3/3's first layer).
+        (64, 1024, 1024, 8192, 128),
+        (64, 256, 4096, 4096, 128),
+        (64, 384, 4096, 4096, 128),
+        # Removes 64 columns' rest rows, whatever it saves (L2/98 at 56 threads).
+        (64, 768, 768, 768, 128),
+        (64, 448, 1024, 1024, 128),
+        (56, 1024, 512, 8192, 256),
+        # 256 columns would add padding or rest rows: 128.
+        (64, 320, 4096, 1024, 128),
+        # K in chunks where 64 columns run one, with even tiles: 64 columns stay.
+        (64, 288, 4096, 4096, 64),
+        # Uneven tiles at 64 columns: chunks pay.
+        (3, 288, 256, 4096, 256),
+        # Less than a quarter saved: 64 columns stay, though some would gain
+        # (128 threads, 1024x1024x1024: 98 us, 83 at 128 columns).
+        (64, 1024, 512, 8192, 64),
+        (64, 512, 1024, 1024, 64),
+        (64, 300, 1000, 1000, 64),
+        (3, 256, 256, 256, 64),
+        (128, 1024, 1024, 1024, 64),
+        # Unchanged: panels that fit, and the few-rows rules.
+        (64, 1024, 8192, 1024, 256),
+        (64, 1024, 8192, 8192, 256),
+        (64, 16384, 4096, 2048, 256),
+        (64, 16384, 1024, 4096, 128),
+        (64, 128, 4096, 4096, 128),
+        (64, 128, 8192, 4096, 64),
+        (64, 128, 32768, 32768, 512),
+    ],
+)
+def test_vnni_panel_choice(monkeypatch, threads, m, n, k, panel):
+    from helion_mlir_cpu_utils.matmul import vnni_panel
+
+    monkeypatch.setenv("OMP_NUM_THREADS", str(threads))
+    assert vnni_panel(m, n, k) == panel
+
+
+@pytest.mark.parametrize("panel", [None, 64, 128, 256])
+def test_linear_chain_any_panel_matches_fp64(panel):
+    """L3/3's shape class: the result must not depend on the tile the panel
+    sets (checked against fp64)."""
+    from helion_mlir_cpu_utils import linear
+
+    torch.manual_seed(7)
+    layer = torch.nn.Linear(1024, 1024).to(torch.bfloat16)
+    x = torch.rand(512, 1024).to(torch.bfloat16)
+    out, _ = linear(x, layer, torch.relu, panel=panel)
+    ref = torch.relu(
+        x.to(torch.float64) @ layer.weight.detach().to(torch.float64).T
+        + layer.bias.detach().to(torch.float64)
+    )
+    assert _error(out, ref) < 1e-2
+
+
 def _sdpa_module():
     _, mlir = _runners()
     path = mlir.kernels / "level1" / "97_ScaledDotProductAttention.py"
