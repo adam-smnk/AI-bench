@@ -777,6 +777,20 @@ def test_gemm_sum_integer_inputs_raise_as_the_reference(dtype):
         model(x)
 
 
+@pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
+def test_column_sum_of_one_row_is_new_memory(dtype):
+    """As a sum: not a view of the input, and +0.0 where the row has -0.0."""
+    from helion_mlir_cpu_utils import column_sum
+
+    x = torch.tensor([[-0.0, 1.0, -2.0]]).to(dtype)
+    out = column_sum(x)
+    assert out.dtype == torch.float32
+    assert torch.equal(out, x.float()[0])
+    assert torch.signbit(out).tolist() == [False, False, True]
+    x[0, 1] = 5.0
+    assert out[1].item() == 1.0
+
+
 def test_row_dot_rejects_bad_operands():
     from helion_mlir_cpu_utils import row_dot
 
