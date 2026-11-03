@@ -76,7 +76,9 @@ Inferred prefetches can cost 4x: 64x512 on the B50, 53494 us, and 128x512 on the
 B70, 19990 against 5107. So the B50 takes 64x512 without prefetch (torch 16162 wall,
 torch.compile 16089), and the B70 128x128 with them, 5 % ahead of 64x512 without and
 3-4 % ahead of torch (5075 wall). The B50's choice needs ``N`` a multiple of 512; a
-prefetch depth of 0 needs derived layouts (``xegpu_layouts="ir"``, the default)."""
+prefetch depth of 0 needs derived layouts (``xegpu_layouts="ir"``, the default):
+``"lighthouse"`` refuses it with an ``XeGPUConfigError``, "prefetch depths are
+positive" (the backend's ``test_xpu_layouts``)."""
 LINEAR_TALL_BLOCKS = (128, 512, 32)
 """40's 16384 x 4096 x 4096 (four times as many rows as columns): 128x512 workgroups
 with inferred layouts, against 256x256. Sustained, wall: B50 15142 against 16345 us,
