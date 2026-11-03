@@ -36,6 +36,7 @@ from .matmul import GEMM_SMALL_K
 from .matmul import GEMM_SPLIT_K
 from .matmul import GEMM_SQUARE
 from .matmul import GEMM_STANDARD
+from .matmul import gemm_split_k
 from .matmul import matmul
 from .matmul import matmul_split_k
 from .matmul import pad_k
@@ -61,6 +62,7 @@ __all__ = [
     "ROW_SEGMENT_COLS",
     "attention",
     "elu",
+    "gemm_split_k",
     "hardsigmoid",
     "hardtanh",
     "l1_norm",

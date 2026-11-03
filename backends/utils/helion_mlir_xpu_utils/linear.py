@@ -10,7 +10,8 @@ kernel per problem (a Helion kernel cannot close over an epilogue): the f32
 accumulator plus the bias row (broadcast over the tile's rows), the epilogue in
 f32, one rounding to bf16 at the store. Scalar parameters are ``hl.constexpr``,
 like the elementwise kernels'. The block sizes divide ``M``, ``N`` and ``K`` (no
-masking): ``M`` a multiple of 256 (or 128 below 256), ``N`` of 256, ``K`` of 32.
+masking): ``M`` a multiple of 256 (or 64 below 256), ``N`` of 256, or of 512 below
+256 rows and at 4 ``M`` to ``N``, ``K`` of 32.
 """
 
 from __future__ import annotations
@@ -23,6 +24,9 @@ import helion_mlir_backend  # noqa: F401
 import torch
 from torch import Tensor
 import torch.nn.functional as F
+
+from .device import MANY_XE_CORES
+from .device import xe_cores
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -53,16 +57,55 @@ workgroup and subgroup tiles; the K step and A loads of AI-bench's tuned
   registers the K loop leaves); the bias row is a gather of the subgroup's 64
   columns (4 elements per lane), once per workgroup.
 """
-LINEAR_SKINNY_BLOCKS = (128, 256, 32)
-"""59's ``M = 128`` (128 x 32768 x 32768): one 128-row workgroup tile, so the
-weight (2 GiB of bf16, the dominant traffic at 128 flops per byte) is read
-exactly once over the 1x128 grid (128 workgroups). 32 subgroups of 16x64
-(inferred ``[8, 4]``, as lighthouse's selector and tuned parameters), A tiles
-16x32 in one 2D block read (the tuned parameters read 8x16)."""
+LINEAR_SKINNY_BLOCKS = (64, 512, 32)
+LINEAR_SKINNY_MANY_CORES_BLOCKS = (128, 128, 32)
+"""59's ``M = 128`` (128 x 32768 x 32768): the weight (2 GiB of bf16, the dominant
+traffic at 128 flops per byte) is read once whatever the grid, and the prefetches
+inferred for it are what costs. Sustained, device time and wall, us:
+
+=================== ============== ==============
+tiles               B50            B70
+=================== ============== ==============
+128x256, inferred   19500-20400    6500-6800
+64x512, none        15422 / 15949  4977 / 5120
+128x128, none       16308 / 16816  5044 / 5219
+128x128, inferred   19028 / 18579  4803 / 4878
+=================== ============== ==============
+
+Inferred prefetches can cost 4x: 64x512 on the B50, 53494 us, and 128x512 on the
+B70, 19990 against 5107. So the B50 takes 64x512 without prefetch (torch 16162 wall,
+torch.compile 16089), and the B70 128x128 with them, 5 % ahead of 64x512 without and
+3-4 % ahead of torch (5075 wall). The B50's choice needs ``N`` a multiple of 512; a
+prefetch depth of 0 needs derived layouts (``xegpu_layouts="ir"``, the default)."""
+LINEAR_TALL_BLOCKS = (128, 512, 32)
+"""40's 16384 x 4096 x 4096 (four times as many rows as columns): 128x512 workgroups
+with inferred layouts, against 256x256. Sustained, wall: B50 15142 against 16345 us,
+B70 5025-5039 against 5173-5187; the cause was not measured. Other grids tried are
+slower (128x256, 256x128, 512x128, K steps of 64). torch.compile stays ahead on the
+B50 (13549 us)."""
 _A_LOAD = (32, 32, 16, 16)
-_SKINNY_A_LOAD = (16, 32, 16, 16)
 """``xegpu_load_tiles`` ``[a_m, a_k, b_k, b_n]``: A in one block read per
-subgroup tile (32x32, or 16x32 for the 128-row tiles), B transposed in 16x16."""
+subgroup tile (32x32), B transposed in 16x16."""
+_NO_PREFETCH = ((0, 0),)
+"""``xegpu_prefetch_depths`` of no prefetch of either operand."""
+
+
+def _config(x: Tensor, weight: Tensor) -> helion.Config:
+    """Block sizes and keys of ``x @ weight.T``, for its shape and card: see
+    :data:`LINEAR_BLOCKS`, :data:`LINEAR_SKINNY_BLOCKS`, :data:`LINEAR_TALL_BLOCKS`."""
+    rows, columns = x.size(0), weight.size(0)
+    if rows < LINEAR_BLOCKS[0]:
+        if xe_cores(x.device) >= MANY_XE_CORES:
+            return helion.Config(block_sizes=list(LINEAR_SKINNY_MANY_CORES_BLOCKS))
+        return helion.Config(
+            block_sizes=list(LINEAR_SKINNY_BLOCKS),
+            xegpu_prefetch_depths=[list(depths) for depths in _NO_PREFETCH],
+        )
+    if rows >= 4 * columns:
+        return helion.Config(block_sizes=list(LINEAR_TALL_BLOCKS))
+    return helion.Config(
+        block_sizes=list(LINEAR_BLOCKS), xegpu_load_tiles=[list(_A_LOAD)]
+    )
 
 
 def _linear_subtract_multiply_relu(
@@ -215,7 +258,7 @@ def _linear_swish_divide_clamp_tanh_clamp(
     return out
 
 
-_KERNELS: dict[tuple[Callable[..., Tensor], bool], helion.Kernel] = {}
+_KERNELS: dict[tuple[Callable[..., Tensor], int, int, int], helion.Kernel] = {}
 
 
 def _run(
@@ -225,25 +268,16 @@ def _run(
     bias: Tensor | None,
     *scalars: float,
 ) -> Tensor:
-    """``fn`` with the block sizes for ``x``'s rows (:data:`LINEAR_SKINNY_BLOCKS`
-    below 256 rows, else :data:`LINEAR_BLOCKS`), the scalars as ``hl.constexpr``.
-    ``weight`` and ``bias`` are taken in ``x``'s dtype; no bias adds zeros."""
-    skinny = x.size(0) < LINEAR_BLOCKS[0]
-    key = (fn, skinny)
+    """``fn`` with the config of its shape and card (:func:`_config`), the scalars
+    as ``hl.constexpr``. ``weight`` and ``bias`` are taken in ``x``'s dtype; no bias
+    adds zeros."""
+    key = (fn, x.size(0), weight.size(0), xe_cores(x.device))
     if key not in _KERNELS:
-        blocks, a_load = (
-            (LINEAR_SKINNY_BLOCKS, _SKINNY_A_LOAD)
-            if skinny
-            else (LINEAR_BLOCKS, _A_LOAD)
-        )
         _KERNELS[key] = helion.kernel(
             fn,
             backend="mlir",
             static_shapes=True,
-            config=helion.Config(
-                block_sizes=list(blocks),
-                xegpu_load_tiles=[list(a_load)],
-            ),
+            config=_config(x, weight),
         )
     weight = weight.detach().to(x.dtype)
     if bias is None:

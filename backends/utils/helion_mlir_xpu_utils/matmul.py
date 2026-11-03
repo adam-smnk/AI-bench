@@ -20,6 +20,9 @@ import helion_mlir_backend  # noqa: F401
 import torch
 from torch import Tensor
 
+from .device import MANY_XE_CORES
+from .device import xe_cores
+
 if TYPE_CHECKING:
     from collections.abc import Callable
     from collections.abc import Sequence
@@ -174,7 +177,19 @@ helion-mlir-backend's ``tests/kernelbench_xpu.py``.
 - Normalized error against an f32 reference 2.6e-3, as torch's.
 - Measured 2026-10-31 on the B50 (e2e, interleaved, L2 flushed).
 
-Pass as ``matmul_split_k(a, b, **GEMM_SPLIT_K)``."""
+Pass as ``matmul_split_k(a, b, **gemm_split_k(a.device))``."""
+
+
+def gemm_split_k(device: torch.device) -> dict[str, Any]:
+    """:data:`GEMM_SPLIT_K` for the card of ``device``. 32 Xe cores (B70) drop the
+    prefetch depths: device time, sustained, 1038 us against 1282-1328 with 4 and 2,
+    the wall gap to torch from 1.33 to 1.09. Depths 1/1 and 2/2 measure as none
+    given (1038, 1050) and 0/0 slightly slower (1055); 64 splits are no gain (1030,
+    with one wave of 32 Xe cores per 32 chunks). The B50 keeps them: 3048 us against
+    3197, unchanged."""
+    if xe_cores(device) < MANY_XE_CORES:
+        return GEMM_SPLIT_K
+    return {k: v for k, v in GEMM_SPLIT_K.items() if k != "xegpu_prefetch_depths"}
 
 
 def _matmul(a: Tensor, b: Tensor) -> Tensor:
