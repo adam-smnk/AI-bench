@@ -10,6 +10,13 @@ import torch.nn as nn
 # kept: exponentials stay below e^8, well within f32 and bf16 range.
 _RESCALE_THRESHOLD = 8.0
 
+# A partial key tile's padded lanes score 0, so a row whose real scores are all far
+# below 0 gives them ``exp(0 - top)``: inf, and the V padding's zeros then make it
+# NaN in the dot. Scores of real lanes stay below _RESCALE_THRESHOLD; this bound,
+# past it, keeps the padded ones finite, and those V zeros then cancel them. Only
+# with such tiles: it costs 2.5 % at S512 D64, EMR.
+_PADDED_LANE_MAX = 16.0
+
 
 def _dot_nt(a: torch.Tensor, b: torch.Tensor, vnni: bool) -> torch.Tensor:
     """``a @ b.T`` of ``[M, K]`` and ``[N, K]``; bf16 operands in AMX's VNNI
@@ -38,8 +45,8 @@ def _exp_bf16(x: torch.Tensor) -> torch.Tensor:
     with ``V`` spanning over about 1e6, such a weight can show in the output.
     The clamp is safely past where the cubic's 64th power underflows (denormal
     from about -74, 0 by -84), so ``-inf`` scores weigh nothing, as with
-    ``exp``; the cubic is positive down to it. L1/97 at S2048 D128, EMR: 12.2 ms with the f32-accurate polynomial
-    and its clamps, 10.9 with this."""
+    ``exp``; the cubic is positive down to it. L1/97 at S2048 D128, EMR: 12.2 ms
+    with the f32-accurate polynomial and its clamps, 10.9 with this."""
     y = torch.clamp(x, min=-96.0) * 0.015625
     p = 1.0 + y * (1.0 + y * (0.5 + y * (1.0 / 6.0)))
     p = p * p
@@ -58,6 +65,7 @@ def _attention(
     vnni: hl.constexpr,
     rows: hl.constexpr,
     padded_dim: hl.constexpr,
+    partial_keys: hl.constexpr,
 ) -> torch.Tensor:
     """Softmax attention of ``[BH, S, D]`` heads with logits scaled by ``scale``,
     online over key blocks: the running row maxima rescale the sums and the
@@ -92,15 +100,22 @@ def _attention(
                         total = total * alpha
                         acc = acc * alpha[:, None]
                         top = new_top
+                    x = scores * scale - top[:, None]
+                    if partial_keys:
+                        x = torch.clamp(x, max=_PADDED_LANE_MAX)
                     if vnni:
-                        p = _exp_bf16(scores * scale - top[:, None])
+                        p = _exp_bf16(x)
                     else:
-                        p = torch.exp(scores * scale - top[:, None])
+                        p = torch.exp(x)
                     total = total + p.sum(-1)
                     acc = acc + _dot_nn(p.to(q.dtype), v[h, tile_n, tile_d], vnni)
                 # A row with no weight at all (all scores -inf) is 0, not 0 / 0;
                 # too small to change a sum of weights, whose largest is near 1.
-                out[h, tile_m, tile_d] = (acc / (total[:, None] + 1.0e-37)).to(q.dtype)
+                y = acc / (total[:, None] + 1.0e-37)
+                if partial_keys:
+                    # Its -inf times a padded key's zeros made a NaN in acc.
+                    y = torch.where(total[:, None] == 0.0, torch.zeros_like(y), y)
+                out[h, tile_m, tile_d] = y.to(q.dtype)
     return out
 
 
@@ -159,6 +174,7 @@ def _call(Q: torch.Tensor, K: torch.Tensor, V: torch.Tensor) -> tuple:
         hl.constexpr(vnni),
         hl.constexpr(rows),
         hl.constexpr(block_d),
+        hl.constexpr(s % block_n != 0),
     )
 
 

@@ -424,7 +424,8 @@ assert ((out - ref).abs().max() / ref.abs().max()) < 6e-3
 
 # Below 32 keys, one column and odd shapes stay off AMX or masked: right values.
 @pytest.mark.parametrize(
-    "shape", [(1, 2, 31, 64), (1, 2, 2, 1), (1, 2, 16, 33), (1, 2, 33, 7), (1, 2, 48, 7)]
+    "shape",
+    [(1, 2, 31, 64), (1, 2, 2, 1), (1, 2, 16, 33), (1, 2, 33, 7), (1, 2, 48, 7)],
 )
 def test_sdpa_bf16_small_shapes_match_fp64(shape):
     model = _sdpa_module().Model()
@@ -515,6 +516,32 @@ def test_sdpa_bf16_contractions_reach_amx(shape, all_on_amx):
     assert left == 0 or not all_on_amx
 
 
+# Scaled scores all below about -88 with a partial key tile: a padded lane's
+# score of 0 gave exp(0 - top) = inf, and inf * 0 in the V dot made every such row
+# NaN, on finite inputs, with torch and fp64 finite. Found on S 65, 600, 3; f32 too.
+@pytest.mark.parametrize(
+    ("shape", "dtype", "limit"),
+    [
+        ((1, 2, 65, 64), torch.bfloat16, 6e-3),
+        ((1, 2, 3, 64), torch.bfloat16, 6e-3),
+        ((1, 2, 33, 100), torch.bfloat16, 6e-3),
+        ((1, 2, 600, 66), torch.bfloat16, 6e-3),
+        ((1, 2, 129, 64), torch.float32, 1e-4),
+    ],
+)
+def test_sdpa_all_negative_scores_with_a_partial_key_tile(shape, dtype, limit):
+    torch.manual_seed(0)
+    q = (torch.randn(shape).abs() * 8).to(dtype)
+    k = (-torch.randn(shape).abs() * 8).to(dtype)
+    v = torch.randn(shape).to(dtype)
+    ref = torch.nn.functional.scaled_dot_product_attention(
+        q.double(), k.double(), v.double()
+    )
+    out = _sdpa_module().Model()(q, k, v)
+    assert not out.double().isnan().any()
+    assert _error(out, ref) < limit
+
+
 # The padded columns of D are computed, not stored: NaNs and -inf in the last
 # real column act as in fp64.
 def test_sdpa_bf16_unaligned_head_dim_nonfinite():
@@ -563,10 +590,13 @@ def test_sdpa_bf16_one_nan_query_is_one_nan_row(shape):
 
 
 # A row of all -inf scores has no weights: 0 as in fp64, not the plain mean of
-# V, finite and wrong.
-def test_sdpa_bf16_minus_inf_row_is_not_the_mean_of_v():
+# V, finite and wrong; with a partial key tile (S not dividing its tiles), not NaN.
+@pytest.mark.parametrize(
+    "s", [64, 33, 40, 48, 66, 100, 120, 5, 65, 129]
+)
+def test_sdpa_bf16_minus_inf_row_is_not_the_mean_of_v(s):
     model = _sdpa_module().Model()
-    q, k, v = _sdpa_nonfinite_inputs((1, 2, 64, 64))
+    q, k, v = _sdpa_nonfinite_inputs((1, 2, s, 64))
     q[0, 0, 3, 5] = float("-inf")
     out = model(q, k, v)
     assert _nan_rows(out) == 0
