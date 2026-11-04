@@ -40,6 +40,7 @@ from .matmul import gemm_split_k
 from .matmul import matmul
 from .matmul import matmul_split_k
 from .matmul import pad_k
+from .mlp import mlp
 from .normalization import REDUCTION_BLOCKS
 from .normalization import ROW_SEGMENT_COLS
 from .normalization import l1_norm
@@ -79,6 +80,7 @@ __all__ = [
     "log_softmax",
     "matmul",
     "matmul_split_k",
+    "mlp",
     "pad_k",
     "relu",
     "row_segments",

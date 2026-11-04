@@ -16,6 +16,7 @@ masking): ``M`` a multiple of 256 (or 64 below 256), ``N`` of 256, or of 512 bel
 
 from __future__ import annotations
 
+import os
 from typing import TYPE_CHECKING
 
 import helion
@@ -85,11 +86,26 @@ with inferred layouts, against 256x256. Sustained, wall: B50 15142 against 16345
 B70 5025-5039 against 5173-5187; the cause was not measured. Other grids tried are
 slower (128x256, 256x128, 512x128, K steps of 64). torch.compile stays ahead on the
 B50 (13549 us)."""
+CACHE_WEIGHTS_ENV = "HELION_MLIR_CACHE_PREPACKED_WEIGHTS"
+"""The CPU models' switch; here ``0`` means no copy of the weights at all, ``1`` a
+transposed copy."""
+CACHE_WEIGHTS_DEFAULT = True
+"""Level 3's form without the switch: the transposed copy, which assumes constant
+weights as the CPU models do (:mod:`.mlp` names what leaves it stale)."""
 _A_LOAD = (32, 32, 16, 16)
 """``xegpu_load_tiles`` ``[a_m, a_k, b_k, b_n]``: A in one block read per
 subgroup tile (32x32), B transposed in 16x16."""
 _NO_PREFETCH = ((0, 0),)
 """``xegpu_prefetch_depths`` of no prefetch of either operand."""
+
+
+def cache_transposed_weights() -> bool:
+    """Whether a level 3 model keeps its weights transposed: the switch, or
+    :data:`CACHE_WEIGHTS_DEFAULT`."""
+    value = os.environ.get(CACHE_WEIGHTS_ENV)
+    if value is None:
+        return CACHE_WEIGHTS_DEFAULT
+    return value.strip().lower() not in ("0", "false", "no")
 
 
 def _config(x: Tensor, weight: Tensor) -> helion.Config:
@@ -260,6 +276,32 @@ def _linear_swish_divide_clamp_tanh_clamp(
     return out
 
 
+def _linear_relu(x: Tensor, weight: Tensor, bias: Tensor) -> Tensor:
+    """KernelBench level 3 1, 2, 3, hidden layers: ``relu(linear(x))``."""
+    m, k = x.size()
+    n, _ = weight.size()
+    out = torch.empty([m, n], dtype=x.dtype, device=x.device)
+    for tm, tn in hl.tile([m, n]):
+        acc = hl.zeros([tm, tn], dtype=torch.float32)
+        for tk in hl.tile(k):
+            acc = torch.addmm(acc, x[tm, tk], weight[tn, tk].T)
+        out[tm, tn] = torch.relu(acc + bias[tn]).to(x.dtype)
+    return out
+
+
+def _linear_plain(x: Tensor, weight: Tensor, bias: Tensor) -> Tensor:
+    """KernelBench level 3 1, 2, 3, last layer: ``linear(x)``."""
+    m, k = x.size()
+    n, _ = weight.size()
+    out = torch.empty([m, n], dtype=x.dtype, device=x.device)
+    for tm, tn in hl.tile([m, n]):
+        acc = hl.zeros([tm, tn], dtype=torch.float32)
+        for tk in hl.tile(k):
+            acc = torch.addmm(acc, x[tm, tk], weight[tn, tk].T)
+        out[tm, tn] = (acc + bias[tn]).to(x.dtype)
+    return out
+
+
 _KERNELS: dict[tuple[Callable[..., Tensor], int, int, int], helion.Kernel] = {}
 
 
@@ -286,6 +328,16 @@ def _run(
         bias = torch.zeros(weight.size(0), dtype=x.dtype, device=x.device)
     bias = bias.detach().to(x.dtype)
     return _KERNELS[key](x, weight, bias, *(hl.constexpr(value) for value in scalars))
+
+
+def linear_relu(x: Tensor, weight: Tensor, bias: Tensor | None) -> Tensor:
+    """A hidden layer of KernelBench level 3 1, 2, 3: ``relu(linear(x))``."""
+    return _run(_linear_relu, x, weight, bias)
+
+
+def linear_plain(x: Tensor, weight: Tensor, bias: Tensor | None) -> Tensor:
+    """The last layer of KernelBench level 3 1, 2, 3: ``linear(x)``."""
+    return _run(_linear_plain, x, weight, bias)
 
 
 def linear_subtract_multiply_relu(
