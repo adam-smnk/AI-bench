@@ -37,7 +37,8 @@ its tuned parameter database (1, 2, 7, 9 and 13) on 256x256 workgroups and 32x64
 for the transposed 16-18. Other configs for particular shapes: 7 and 9 (output
 store bound) take :data:`GEMM_SMALL_K` (9 with K padded from 32 to 64, the
 tiles' two K steps), 6 (K = 524288, a 256x256 output) a split K
-(:data:`GEMM_SPLIT_K`). Transposed operands (A stored ``[K, M]``, B ``[N, K]``)
+(:data:`GEMM_SPLIT_K`), 16 and 18 their own tiles (:data:`GEMM_TRANSPOSED_A`,
+:data:`GEMM_TRANSPOSED_BOTH`). Transposed operands (A stored ``[K, M]``, B ``[N, K]``)
 are loaded as transposed 16x16 tiles."""
 GEMM_SQUARE: dict[str, Any] = {
     "block_sizes": (128, 512, 32),
@@ -107,6 +108,31 @@ GEMM_STANDARD: dict[str, Any] = {
   to ``torch.matmul``.
 
 Pass as ``matmul(a, b, **GEMM_STANDARD)``."""
+
+GEMM_TRANSPOSED_A: dict[str, Any] = {
+    "block_sizes": GEMM_BLOCKS,
+    "xegpu_load_tiles": ((16, 16, 16, 32),),
+}
+"""16_Matmul_with_transposed_A (2048x4096x8192). Pass with ``trans_a=True``.
+
+The transposed A is read in 16x16 tiles anyway, so B is read in the same K
+steps: 8 block loads per 32 DPAS instead of 12, the wide moves unchanged. Cycles
+stay at 4.35 M on the B50, which is at its 70 W cap, and its clock rises 3 %: wall
+3445 against 3555 us (3 runs, sustained). The B70 ties, 1064 against 1067 us.
+Other load tiles, workgroup shapes and 64x32 subgroup tiles don't help."""
+
+GEMM_TRANSPOSED_BOTH: dict[str, Any] = {
+    "block_sizes": GEMM_BLOCKS,
+    "xegpu_sg_tiles": ((64, 32),),
+}
+"""18_Matmul_with_transposed_both (2048x4096x8192). Pass with ``trans_a=True,
+trans_b=True``.
+
+64x32 subgroup tiles, where lighthouse's inference gives 32x64: 2.45 M cycles
+against 2.73 M on the B70, wall 1172 against 1265 us, and 4.92 M against 5.21 M
+on the B50, 3825 against 3901 us at a 4 % lower clock (3 runs, sustained). It's
+specific to this form: the same tile costs 63-66 % on 17_Matmul_with_transposed_B
+and 6-10 % on 16. Load tiles and prefetch depths on top changed nothing."""
 
 GEMM_SMALL_K: dict[str, Any] = {
     "block_sizes": (64, 128, 32),

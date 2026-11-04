@@ -36,6 +36,8 @@ from .matmul import GEMM_SMALL_K
 from .matmul import GEMM_SPLIT_K
 from .matmul import GEMM_SQUARE
 from .matmul import GEMM_STANDARD
+from .matmul import GEMM_TRANSPOSED_A
+from .matmul import GEMM_TRANSPOSED_BOTH
 from .matmul import gemm_split_k
 from .matmul import matmul
 from .matmul import matmul_split_k
@@ -57,6 +59,8 @@ __all__ = [
     "GEMM_SPLIT_K",
     "GEMM_SQUARE",
     "GEMM_STANDARD",
+    "GEMM_TRANSPOSED_A",
+    "GEMM_TRANSPOSED_BOTH",
     "LINEAR_BLOCKS",
     "LINEAR_SKINNY_BLOCKS",
     "REDUCTION_BLOCKS",

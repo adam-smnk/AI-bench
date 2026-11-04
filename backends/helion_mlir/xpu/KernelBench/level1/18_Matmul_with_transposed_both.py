@@ -2,6 +2,7 @@ import helion_mlir_backend  # noqa: F401
 import torch
 import torch.nn as nn
 
+from helion_mlir_xpu_utils import GEMM_TRANSPOSED_BOTH
 from helion_mlir_xpu_utils import matmul
 
 
@@ -12,4 +13,4 @@ class Model(nn.Module):
         super(Model, self).__init__()
 
     def forward(self, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
-        return matmul(A, B, trans_a=True, trans_b=True)
+        return matmul(A, B, trans_a=True, trans_b=True, **GEMM_TRANSPOSED_BOTH)
