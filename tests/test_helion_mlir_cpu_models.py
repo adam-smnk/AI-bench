@@ -723,6 +723,48 @@ def test_tensor_matmul_tiles(b, i, j, inner, outer, dtype, monkeypatch):
 
 
 _GEMM_SUM = "level2/14_Gemm_Divide_Sum_Scaling"
+_GEMM_SUM_ENV = "HELION_MLIR_L2_14_REWRITE"
+
+
+@pytest.fixture
+def gemm_sum_rewrite(monkeypatch):
+    """14's models built in the test use the opt-in rewrite."""
+    monkeypatch.setenv(_GEMM_SUM_ENV, "1")
+
+
+@pytest.mark.parametrize(
+    ("value", "rewrite"),
+    [
+        (None, False),
+        ("0", False),
+        ("false", False),
+        ("", False),
+        ("1", True),
+        ("true", True),
+    ],
+)
+def test_gemm_sum_flag_picks_the_kernels(value, rewrite, monkeypatch):
+    """14 runs the GEMM and the row sum unless the flag asks for the rewrite:
+    told by the helpers called, one call per form."""
+    if value is None:
+        monkeypatch.delenv(_GEMM_SUM_ENV, raising=False)
+    else:
+        monkeypatch.setenv(_GEMM_SUM_ENV, value)
+    ref, model = _pair(_GEMM_SUM, (64, 64, 1.5), torch.float32)
+    called = []
+    namespace = type(model).forward.__globals__
+    for name in ("linear", "row_sum", "column_sum", "row_dot"):
+
+        def record(*args, _name=name, _helper=namespace[name], **kwargs):
+            called.append(_name)
+            return _helper(*args, **kwargs)
+
+        monkeypatch.setitem(namespace, name, record)
+    torch.manual_seed(0)
+    with torch.no_grad():
+        out = model(torch.rand(4, 64))
+    assert called == (["column_sum", "row_dot"] if rewrite else ["linear", "row_sum"])
+    assert out.shape == (4, 1)
 
 
 @pytest.mark.parametrize(
@@ -736,8 +778,55 @@ _GEMM_SUM = "level2/14_Gemm_Divide_Sum_Scaling"
     ],
 )
 @pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
-def test_gemm_sum_as_dot_product(m, k, n, scale, dtype):
-    """14 computes ``x · sum_n(W)``, not the GEMM and the row sum: checked
+def test_gemm_sum_forms_agree_with_fp64(m, k, n, scale, dtype, monkeypatch):
+    """The default GEMM form and the rewrite: both right against fp64, on the
+    first call and a second one on a fresh input."""
+    tol = 0.02 if dtype is torch.bfloat16 else 1e-4
+    monkeypatch.delenv(_GEMM_SUM_ENV, raising=False)
+    ref, default = _pair(_GEMM_SUM, (k, n, scale), dtype)
+    monkeypatch.setenv(_GEMM_SUM_ENV, "1")
+    _, rewrite = _pair(_GEMM_SUM, (k, n, scale), dtype)
+    ref = ref.double()
+    torch.manual_seed(0)
+    for _ in range(2):
+        x = torch.rand(m, k).to(dtype)
+        with torch.no_grad():
+            out, dot = default(x), rewrite(x)
+            exact = ref(x.double())
+        assert out.shape == (m, 1) and out.dtype == dtype
+        assert _error(out, exact) < tol
+        assert _error(dot, exact) < tol
+
+
+def test_gemm_sum_default_follows_weight_changes(monkeypatch):
+    """The packed weight of 14's default form follows in-place ops and
+    ``load_state_dict``, as the other kernels' do through ``linear``."""
+    monkeypatch.delenv(_GEMM_SUM_ENV, raising=False)
+    ref, model = _pair(_GEMM_SUM, (64, 64, 1.5), torch.float32)
+    x = torch.rand(4, 64)
+    with torch.no_grad():
+        model(x)
+        model.weight.mul_(-0.5)
+        ref.weight.mul_(-0.5)
+        assert _error(model(x), ref(x)) < 1e-4
+        ref.weight.add_(0.25)
+        model.load_state_dict(ref.state_dict())
+        assert _error(model(x), ref(x)) < 1e-4
+
+
+@pytest.mark.parametrize(
+    ("m", "k", "n", "scale"),
+    [
+        (64, 256, 64, 1.5),  # whole tiles
+        (33, 65, 47, -1.5),  # ragged everywhere, negative scale
+        (100, 129, 301, 2.0),  # more outputs than inputs
+        (5, 31, 3, 1.5),  # below every block
+        (1, 64, 1, 1.5),  # one row, one output
+    ],
+)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
+def test_gemm_sum_as_dot_product(m, k, n, scale, dtype, gemm_sum_rewrite):
+    """14's rewrite computes ``x · sum_n(W)``, not the GEMM and the row sum: checked
     against its fp64 result, against the reference and against the GEMM form."""
     ref, model = _pair(_GEMM_SUM, (k, n, scale), dtype)
     torch.manual_seed(0)
@@ -757,7 +846,7 @@ def test_gemm_sum_as_dot_product(m, k, n, scale, dtype):
         assert _error(out, exact) <= max(_error(expected, exact), _error(gemm, exact))
 
 
-def test_gemm_sum_follows_weight_changes():
+def test_gemm_sum_follows_weight_changes(gemm_sum_rewrite):
     """The summed weight is never stale: not after in-place ops or
     ``load_state_dict``, and not after ``.data.copy_()``, which leaves
     ``_version`` unchanged."""
@@ -780,7 +869,7 @@ def test_gemm_sum_follows_weight_changes():
 
 
 @pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
-def test_gemm_sum_guard_path_follows_weight_changes(dtype):
+def test_gemm_sum_guard_path_follows_weight_changes(dtype, gemm_sum_rewrite):
     """The recomputation of an overflowing result does not reuse a packed weight
     either: its sign follows ``.data``, which leaves ``_version`` unchanged."""
     ref, model = _pair(_GEMM_SUM, (64, 64, 1.5), dtype)
@@ -827,7 +916,7 @@ def test_gemm_sum_one_output_row_runs(k, threads):
     assert result.returncode == 0, result.stderr[-2000:]
 
 
-def test_gemm_sum_falls_back_for_other_dtypes():
+def test_gemm_sum_falls_back_for_other_dtypes(gemm_sum_rewrite):
     """A weight of another dtype than the input takes the GEMM and the row sum,
     which round the weight to the input's dtype."""
     ref, model = _pair(_GEMM_SUM, (64, 64, 1.5), torch.float32)
@@ -916,8 +1005,9 @@ def test_row_dot_ragged_rows_and_8k_plus_1_columns(m, n, threads):
     ],
 )
 @pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
-def test_gemm_sum_finite_inputs_stay_finite(values, weights, dtype):
-    """The reordered sums overflow where the GEMM does not: 14 recomputes."""
+def test_gemm_sum_finite_inputs_stay_finite(values, weights, dtype, gemm_sum_rewrite):
+    """The reordered sums overflow where the GEMM does not: 14's rewrite
+    recomputes."""
     ref, model = _pair(_GEMM_SUM, (64, 64, 1.0), dtype)
     row = torch.tensor(values).reshape(-1)
     x = row.repeat(64, 64 // row.numel()).to(dtype)
@@ -931,7 +1021,7 @@ def test_gemm_sum_finite_inputs_stay_finite(values, weights, dtype):
     assert torch.isfinite(expected).all()
 
 
-def test_gemm_sum_infinite_input_gives_the_references_nan():
+def test_gemm_sum_infinite_input_gives_the_references_nan(gemm_sum_rewrite):
     ref, model = _pair(_GEMM_SUM, (64, 64, 1.5), torch.float32)
     torch.manual_seed(0)
     x = torch.rand(64, 64)
@@ -952,7 +1042,7 @@ def test_gemm_sum_infinite_input_gives_the_references_nan():
         pytest.param((0, 16), 8, id="no-rows"),
     ],
 )
-def test_gemm_sum_other_shapes_run_eagerly(x_shape, n):
+def test_gemm_sum_other_shapes_run_eagerly(x_shape, n, gemm_sum_rewrite):
     ref, model = _pair(_GEMM_SUM, (16, n, 1.5), torch.float32)
     torch.manual_seed(0)
     x = torch.rand(*x_shape)
@@ -970,7 +1060,7 @@ def test_gemm_sum_other_shapes_run_eagerly(x_shape, n):
 
 
 @pytest.mark.parametrize("dtype", [torch.float64, torch.float16])
-def test_gemm_sum_other_float_dtypes_run_eagerly(dtype):
+def test_gemm_sum_other_float_dtypes_run_eagerly(dtype, gemm_sum_rewrite):
     ref, model = _pair(_GEMM_SUM, (16, 8, 1.5), dtype)
     torch.manual_seed(0)
     x = torch.rand(4, 16).to(dtype)
@@ -981,7 +1071,7 @@ def test_gemm_sum_other_float_dtypes_run_eagerly(dtype):
 
 
 @pytest.mark.parametrize("dtype", [torch.int32, torch.uint8])
-def test_gemm_sum_integer_inputs_raise_as_the_reference(dtype):
+def test_gemm_sum_integer_inputs_raise_as_the_reference(dtype, gemm_sum_rewrite):
     ref, model = _pair(_GEMM_SUM, (16, 8, 1.5), torch.float32)
     x = torch.ones(4, 16, dtype=dtype)
     with torch.no_grad(), pytest.raises(RuntimeError):
