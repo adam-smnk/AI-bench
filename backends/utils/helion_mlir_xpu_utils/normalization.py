@@ -1,7 +1,9 @@
 """Row reductions on Helion's MLIR backend for XPU (KernelBench 23, 24, 38, 39).
 
 The kernels mirror helion-mlir-backend's ``tests/kernelbench_xpu.py`` and must be
-kept in sync with it.
+kept in sync with it. Its norms run at the single kernels' block sizes: the one-row
+block sizes below are lowered and run by that repository's
+``tests/test_xpu_row_reduction*.py``.
 
 f32 ``[M, N]`` inputs (4096x393216 and 32768x65536 in the ``mlir-gpu-bench``
 variant), in three kernels (:data:`ROW_SEGMENT_COLS`, :func:`row_segments`):
@@ -15,6 +17,11 @@ variant), in three kernels (:data:`ROW_SEGMENT_COLS`, :func:`row_segments`):
 3. the output, an elementwise kernel of one-row tiles (as the elementwise
    problems: 1D tiles, the column tiles first in the grid) taking the row
    results as ``[M, 1]`` columns.
+
+The two norms take one kernel of one row per workgroup instead, its columns split
+across the subgroups, where the input allows (:data:`ONE_ROW_COLS`,
+:func:`one_row_blocks`). Softmax gains nothing from it (99.7 ms at one row against
+97.3 here) and keeps its three kernels.
 
 Other inputs (no such segments, or not f32) take the single kernels: 64 rows
 per workgroup (lighthouse's reduction class: 8 subgroups of 8 rows) and
@@ -72,6 +79,27 @@ workgroup of 64 rows, and miss both ceilings:
 norm 48.5 -> 33.6 ms (torch 31.7; device time 31.8 vs 31.6), L1 norm 48.6
 -> 33.8 ms (torch 53.5).
 """
+ONE_ROW_COLS = (2048, 1024, 512, 256)
+"""K tiles of the norms' one-row kernels (the first dividing the columns), each with its
+own layout from the backend (``plan_row_reduction``: 32 subgroups of 64 columns for 2048).
+
+Time on the B50 and the B70 follows the threads per row, whatever the tile (Triton, 8192x65536
+on the B50, 32 threads: 23.0 ms at 1 row per workgroup, 27.0 at 2, 32.8 at 4, 37.3 at 32;
+and 1 row with 16 threads equals 2 rows with 32). So one row, all subgroups on it.
+Inferred, not proven: the output pass finds the row in the cache where the first pass left it.
+
+L1 norm, device time, sustained, B50 at 8192x65536 and B70 at 32768x65536 (ms):
+
+  tile  subgroups      B50    B70
+  4096  32 of 128     22.3   34.0
+  2048  32 of 64      22.3   33.7
+  1024  32 of 32      22.9   34.4
+  1024  16 of 64      23.2   36.3
+   512  16 of 32      22.9   35.8
+   512  32 of 16      68.6  107.2
+   256  16 of 16      23.4   36.4
+
+2048 is the best on the B70 and level on the B50. The three kernels: 32.6, 48.0."""
 _SURFACE_ROWS = 1 << 24
 """A 2D block load's surface has at most 2^24 rows (the hardware field): the
 segment view stays below it."""
@@ -93,6 +121,17 @@ def row_segments(shape: torch.Size | tuple[int, ...]) -> int | None:
         if n % cols == 0 and (n // cols) % 16 == 0 and m * (n // cols) <= _SURFACE_ROWS:
             return n // cols
     return None
+
+
+def one_row_blocks(x: Tensor) -> tuple[int, int] | None:
+    """The block sizes ``(cols, 1)`` of the norms' one-row kernels for ``x``
+    (:data:`ONE_ROW_COLS`), or ``None``: not f32 (the backend splits f32 sums only), no
+    such tile, or one row (a grid of one workgroup fails to lower: "host code touches
+    device memory")."""
+    m, n = x.shape
+    if x.dtype != torch.float32 or m < 2:
+        return None
+    return next(((cols, 1) for cols in ONE_ROW_COLS if n % cols == 0), None)
 
 
 def _rows_block(rows: int) -> int:
@@ -149,11 +188,8 @@ def _log_softmax_kernel(x: Tensor) -> Tensor:
     return out
 
 
-@helion.kernel(backend="mlir", static_shapes=True, config=_CONFIG)
 def _l1_norm_kernel(x: Tensor) -> Tensor:
-    """``x / mean(|x|, dim=1, keepdim=True)`` (KernelBench 38), in two passes.
-    Subnormal inputs (``1e-40 * randn``) give inf: the row mean comes out 0
-    on the B50 (the three kernels compute it)."""
+    """``x / mean(|x|, dim=1, keepdim=True)`` (KernelBench 38), in two passes."""
     m, n = x.shape
     block_n = hl.register_block_size(n)
     out = torch.empty_like(x)
@@ -167,7 +203,6 @@ def _l1_norm_kernel(x: Tensor) -> Tensor:
     return out
 
 
-@helion.kernel(backend="mlir", static_shapes=True, config=_CONFIG)
 def _l2_norm_kernel(x: Tensor) -> Tensor:
     """``x / norm(x, p=2, dim=1, keepdim=True)`` (KernelBench 39), in two passes."""
     m, n = x.shape
@@ -435,11 +470,17 @@ def log_softmax(x: Tensor) -> Tensor:
 
 def l1_norm(x: Tensor) -> Tensor:
     """``x`` over the mean of its absolute values along dim 1 of ``[M, N]``."""
+    blocks = one_row_blocks(x)
+    if blocks is not None:
+        return _kernel(_l1_norm_kernel, blocks)(x)
     out = _segmented(x, _segment_abs_sums, _means, _divide_rows, x.shape[1])
-    return _l1_norm_kernel(x) if out is None else out
+    return _kernel(_l1_norm_kernel, REDUCTION_BLOCKS)(x) if out is None else out
 
 
 def l2_norm(x: Tensor) -> Tensor:
     """``x`` over its L2 norm along dim 1 of ``[M, N]``."""
+    blocks = one_row_blocks(x)
+    if blocks is not None:
+        return _kernel(_l2_norm_kernel, blocks)(x)
     out = _segmented(x, _segment_square_sums, _inverse_norms, _scale_rows)
-    return _l2_norm_kernel(x) if out is None else out
+    return _kernel(_l2_norm_kernel, REDUCTION_BLOCKS)(x) if out is None else out

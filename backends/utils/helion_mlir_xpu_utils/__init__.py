@@ -44,10 +44,12 @@ from .matmul import matmul_split_k
 from .matmul import pad_k
 from .mlp import mlp
 from .normalization import REDUCTION_BLOCKS
+from .normalization import ONE_ROW_COLS
 from .normalization import ROW_SEGMENT_COLS
 from .normalization import l1_norm
 from .normalization import l2_norm
 from .normalization import log_softmax
+from .normalization import one_row_blocks
 from .normalization import row_segments
 from .normalization import softmax
 
@@ -63,6 +65,7 @@ __all__ = [
     "GEMM_TRANSPOSED_BOTH",
     "LINEAR_BLOCKS",
     "LINEAR_SKINNY_BLOCKS",
+    "ONE_ROW_COLS",
     "REDUCTION_BLOCKS",
     "ROW_SEGMENT_COLS",
     "attention",
@@ -85,6 +88,7 @@ __all__ = [
     "matmul",
     "matmul_split_k",
     "mlp",
+    "one_row_blocks",
     "pad_k",
     "relu",
     "row_segments",
