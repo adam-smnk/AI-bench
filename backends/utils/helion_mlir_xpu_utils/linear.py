@@ -110,19 +110,32 @@ def cache_transposed_weights() -> bool:
 
 def _config(x: Tensor, weight: Tensor) -> helion.Config:
     """Block sizes and keys of ``x @ weight.T``, for its shape and card: see
-    :data:`LINEAR_BLOCKS`, :data:`LINEAR_SKINNY_BLOCKS`, :data:`LINEAR_TALL_BLOCKS`."""
+    :data:`LINEAR_BLOCKS`, :data:`LINEAR_SKINNY_BLOCKS`, :data:`LINEAR_TALL_BLOCKS`.
+
+    Write-back stores on L2/9, 12, 29, 40, 59, 63, 70, 81 (plain CLI, 3 runs in one session
+    per card, against none): wall -0.0 to -0.9 % on the B50, 0.0 to -1.1 % on the B70, none
+    worse, outputs clean per row. A space-filling walk isn't used here: L2/40 costs 6.7 %
+    and the others up to 2 % on the B50 (one run each)."""
     rows, columns = x.size(0), weight.size(0)
     if rows < LINEAR_BLOCKS[0]:
         if xe_cores(x.device) >= MANY_XE_CORES:
-            return helion.Config(block_sizes=list(LINEAR_SKINNY_MANY_CORES_BLOCKS))
+            return helion.Config(
+                block_sizes=list(LINEAR_SKINNY_MANY_CORES_BLOCKS),
+                xegpu_store_write_back=[True],
+            )
         return helion.Config(
             block_sizes=list(LINEAR_SKINNY_BLOCKS),
             xegpu_prefetch_depths=[list(depths) for depths in _NO_PREFETCH],
+            xegpu_store_write_back=[True],
         )
     if rows >= 4 * columns:
-        return helion.Config(block_sizes=list(LINEAR_TALL_BLOCKS))
+        return helion.Config(
+            block_sizes=list(LINEAR_TALL_BLOCKS), xegpu_store_write_back=[True]
+        )
     return helion.Config(
-        block_sizes=list(LINEAR_BLOCKS), xegpu_load_tiles=[list(_A_LOAD)]
+        block_sizes=list(LINEAR_BLOCKS),
+        xegpu_load_tiles=[list(_A_LOAD)],
+        xegpu_store_write_back=[True],
     )
 
 
