@@ -30,9 +30,9 @@ if TYPE_CHECKING:
 GEMM_BLOCKS = (256, 256, 32)
 """256x256 workgroups of 32 subgroups with K steps of 32, except where measured
 otherwise on the B50: 2 forces 32x64 subgroup tiles (the 64x32 lighthouse infers
-stalls the memory pipe at K = 8192, :data:`GEMM_STANDARD`), and 1 and 13 use
-128x512 workgroups (:data:`GEMM_SQUARE`), so the 256x256 rule no longer holds
-for them. Lighthouse's inference picks 64x32 subgroup tiles for the shapes in
+stalls the memory pipe at K = 8192, :data:`GEMM_STANDARD`), and the plain GEMMs
+1, 2, 13, 16, 17 and 18 walk their workgroups along a space-filling curve
+(:data:`GEMM_SQUARE`). Lighthouse's inference picks 64x32 subgroup tiles for the shapes in
 its tuned parameter database (1, 2, 7, 9 and 13) on 256x256 workgroups and 32x64
 for the transposed 16-18. Other configs for particular shapes: 7 and 9 (output
 store bound) take :data:`GEMM_SMALL_K` (9 with K padded from 32 to 64, the
@@ -41,42 +41,30 @@ tiles' two K steps), 6 (K = 524288, a 256x256 output) a split K
 :data:`GEMM_TRANSPOSED_BOTH`). Transposed operands (A stored ``[K, M]``, B ``[N, K]``)
 are loaded as transposed 16x16 tiles."""
 GEMM_SQUARE: dict[str, Any] = {
-    "block_sizes": (128, 512, 32),
+    "block_sizes": (256, 256, 32),
     "xegpu_sg_tiles": ((32, 64),),
     "xegpu_load_tiles": ((32, 32, 16, 32),),
+    "xegpu_sfc_walk": (True,),
+    "xegpu_store_write_back": (True,),
 }
-"""1_Square and 13_Matmul_for_symmetric_matrices (both 4096^3) on the Arc B50
-(16 Xe cores, one 32-subgroup workgroup per core, 18 MB L2, about 220 GB/s
-DRAM). Keep in sync with ``GEMM_SQUARE`` in
-helion-mlir-backend's ``tests/kernelbench_xpu.py``.
+"""1_Square and 13_Matmul_for_symmetric_matrices (both 4096^3). Keep in sync with
+``GEMM_SQUARE`` in helion-mlir-backend's ``tests/kernelbench_xpu.py``.
 
-- 128x512 workgroups, not 256x256 (the reason is DRAM traffic per wave).
-  Workgroups are dispatched in linear order with the first grid dim (M)
-  fastest, so a wave of 16 workgroups (one per Xe core) of 256x256 tiles is a
-  full column of M blocks and re-reads all of A: about 544 MB of reads per
-  GEMM, 2.4 ms at the measured 220 GB/s, of 3.9 ms. A wave of 128x512 tiles
-  covers half of M, which halves A's traffic per wave (about 288 MB per GEMM).
-  The price is more L2-to-core traffic: a workgroup reads 128x32 + 32x512 bf16
-  (40 KB) per K step for 4.2 Mflop, 102 flop per byte against 128 for 256x256.
-  Forcing 32x64 subgroup tiles on 256x256 workgroups does not help (34.3
-  TFLOPS): it is the workgroup shape.
-- Subgroup tiles 32x64 (4x8 subgroups, 128 of the 256 registers for the
-  accumulator). Lighthouse's inference also gives 32x64 on 128x512
-  workgroups (only on 256x256 it picks 64x32); the tile is pinned so the
-  config does not depend on the selector. Forcing 64x32 costs about 3 % at the
-  70 W cap (41.6 against 42.8 TFLOPS device time, at a 5 % lower clock).
-- Loads: A 32x32 (a subgroup's whole K step, 64 bytes wide, in one block read),
-  B 16x32, as lighthouse's tuned parameters for this shape. A 8x32 / B 32x32
-  and A 32x32 / B 32x32 measure the same within noise (42.6, 42.6, 42.2
-  TFLOPS). Prefetches are inferred.
-- B50-specific: N must be a multiple of 512 and a 16-workgroup wave must cover
-  half of M. On a card with 32 Xe cores (B70) a 32-workgroup wave of 128x512
-  tiles is again a full M column (32 M blocks); the portable fix is a grouped
-  workgroup walk (plan P3).
-- Measured 2026-10-30 on the B50 (device time, interleaved; efficiency =
-  TFLOPS / (16 Xe cores x 2048 flop/clk x sampled clock), as the card runs at
-  its 70 W limit): 42.6 TFLOPS (94 %) against 34.5 (64 %) for the inferred
-  256x256 / 64x32; torch 46.0 (95 %). Bit-identical to ``torch.matmul``.
+- 256x256 workgroups along a space-filling curve (``xegpu_sfc_walk``) and write-back
+  stores (``xegpu_store_write_back``), replacing 128x512 workgroups in linear order.
+  Plain CLI, 3 runs in one session per card, wall against that config, us: 1_Square B50
+  3184 against 3402 (torch 3072), B70 1087 against 1168 (torch 1029); 13 B50 3117
+  against 3322 (torch 2984), B70 1070 against 1148 (torch 1016).
+- In linear order 256x256 is the worse tile on the B50: 3914 against 3280 in one session
+  (``xpu_kernel_time.py``, sustained). The walkers take workgroups in about linear order,
+  the first grid dim fastest, so a wave in that order reads a whole column of M blocks.
+  Why the curve helps is inferred: by arithmetic a window of 16 workgroups reads 34 MiB of
+  operands in linear order and 16 along the curve, against the B50's 18 MiB L2. No L2
+  counters exist here. The same arithmetic doesn't explain the other plain GEMMs, below.
+- Other workgroup shapes on the curve don't beat it on the B50, nor do subgroup tiles, load
+  tiles or prefetch depths (within 1 % or worse, 2 runs each).
+- Subgroup tiles 32x64 (8x4 subgroups, 128 of the 256 registers for the accumulator) and
+  loads A 32x32, B 16x32, as lighthouse's tuned parameters.
 
 Pass as ``matmul(a, b, **GEMM_SQUARE)``."""
 GEMM_STANDARD: dict[str, Any] = {
@@ -85,11 +73,17 @@ GEMM_STANDARD: dict[str, Any] = {
     "xegpu_load_tiles": ((8, 32, 32, 32),),
     "xegpu_prefetch_tiles": ((16, 16, 16, 16),),
     "xegpu_prefetch_depths": ((1, 1),),
+    "xegpu_sfc_walk": (True,),
+    "xegpu_store_write_back": (True,),
 }
 """2_Standard (M 2048, N 4096, K 8192) on the Arc B50. Keep in sync with
 ``GEMM_STANDARD`` in helion-mlir-backend's ``tests/kernelbench_xpu.py``.
 
-- 256x256 workgroups (128 of them: 8 waves of 16 over the Xe cores).
+- 256x256 workgroups (128 of them) along a space-filling curve, with write-back stores:
+  B50 3183 against 3317 us in linear order without hints (torch 3010), B70 1080 against
+  1098 (torch 1032); plain CLI, 3 runs in one session per card. By arithmetic a window of
+  16 workgroups still reads 32 MiB along the curve, over the B50's L2, and it gains anyway:
+  the mechanism isn't established here.
 - Subgroup tiles 32x64 (8x4 subgroups) in place of the 64x32 lighthouse
   infers: 64x32 collapses here (23.5 TFLOPS, 51 %) against 42.8 (94 %) with
   32x64. The cause is a memory-pipe stall with 64 strided A rows per subgroup
@@ -112,6 +106,8 @@ Pass as ``matmul(a, b, **GEMM_STANDARD)``."""
 GEMM_TRANSPOSED_A: dict[str, Any] = {
     "block_sizes": GEMM_BLOCKS,
     "xegpu_load_tiles": ((16, 16, 16, 32),),
+    "xegpu_sfc_walk": (True,),
+    "xegpu_store_write_back": (True,),
 }
 """16_Matmul_with_transposed_A (2048x4096x8192). Pass with ``trans_a=True``.
 
@@ -119,11 +115,24 @@ The transposed A is read in 16x16 tiles anyway, so B is read in the same K
 steps: 8 block loads per 32 DPAS instead of 12, the wide moves unchanged. Cycles
 stay at 4.35 M on the B50, which is at its 70 W cap, and its clock rises 3 %: wall
 3445 against 3555 us (3 runs, sustained). The B70 ties, 1064 against 1067 us.
-Other load tiles, workgroup shapes and 64x32 subgroup tiles don't help."""
+Other load tiles, workgroup shapes and 64x32 subgroup tiles don't help. On a space-filling
+curve with write-back stores (plain CLI, 3 runs in one session per card): B50 3358
+against 3501 us without them (torch 3073), B70 1127 against 1142 (torch 1046)."""
+
+GEMM_TRANSPOSED_B: dict[str, Any] = {
+    "block_sizes": GEMM_BLOCKS,
+    "xegpu_sfc_walk": (True,),
+    "xegpu_store_write_back": (True,),
+}
+"""17_Matmul_with_transposed_B (2048x4096x8192). Pass with ``trans_b=True``. On a
+space-filling curve with write-back stores (plain CLI, 3 runs in one session per card):
+B50 3233 against 3340 us without them (torch 3117), B70 1096 against 1099 (torch 1065)."""
 
 GEMM_TRANSPOSED_BOTH: dict[str, Any] = {
     "block_sizes": GEMM_BLOCKS,
     "xegpu_sg_tiles": ((64, 32),),
+    "xegpu_sfc_walk": (True,),
+    "xegpu_store_write_back": (True,),
 }
 """18_Matmul_with_transposed_both (2048x4096x8192). Pass with ``trans_a=True,
 trans_b=True``.
@@ -132,7 +141,9 @@ trans_b=True``.
 against 2.73 M on the B70, wall 1172 against 1265 us, and 4.92 M against 5.21 M
 on the B50, 3825 against 3901 us at a 4 % lower clock (3 runs, sustained). It's
 specific to this form: the same tile costs 63-66 % on 17_Matmul_with_transposed_B
-and 6-10 % on 16. Load tiles and prefetch depths on top changed nothing."""
+and 6-10 % on 16. Load tiles and prefetch depths on top changed nothing. On a space-filling
+curve with write-back stores (plain CLI, 3 runs in one session per card): B50 3767 against
+3892 us without them (torch 3375), B70 1259 against 1279 (torch 1152)."""
 
 GEMM_SMALL_K: dict[str, Any] = {
     "block_sizes": (64, 128, 32),
